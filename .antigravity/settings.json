@@ -1,0 +1,18 @@
+{
+    "python.analysis.extraPaths": [
+        "./backend-service",
+        "./rag-service"
+    ],
+    "python.autoComplete.extraPaths": [
+        "./backend-service",
+        "./rag-service"
+    ],
+    "typescript.tsdk": "frontend/node_modules/typescript/lib",
+    "files.exclude": {
+        "**/.git": true,
+        "**/.next": true,
+        "**/node_modules": true,
+        "**/__pycache__": true,
+        "**/.venv": true
+    }
+}

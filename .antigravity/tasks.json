@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run FastAPI Backend",
+            "type": "shell",
+            "command": "source .venv/bin/activate && uvicorn app.main:app --reload --port 8000",
+            "options": {
+                "cwd": "${workspaceFolder}/backend-service"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Next.js Frontend",
+            "type": "shell",
+            "command": "npm run dev",
+            "options": {
+                "cwd": "${workspaceFolder}/frontend-service"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run RAG Pipeline",
+            "type": "shell",
+            "command": "source .venv/bin/activate && python -m pipeline.main",
+            "options": {
+                "cwd": "${workspaceFolder}/rag-service"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Start All Services",
+            "dependsOn": [
+                "Run FastAPI Backend",
+                "Run Next.js Frontend",
+                "Run RAG Pipeline"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}
