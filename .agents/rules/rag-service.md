@@ -1,13 +1,13 @@
 ---
 trigger: glob
-globs: rag-service/**
+globs: rag_service/**
 ---
 
 # RAG Service Rules
 
 ## 1. Service Responsibility
 
-`rag-service` owns the Retrieval-Augmented Generation pipeline.
+`rag_service` owns the Retrieval-Augmented Generation pipeline.
 
 It is responsible for:
 
@@ -47,7 +47,7 @@ Future providers may include:
 -   Other OpenAI-compatible or hosted providers
 
 When generating LlamaIndex components, ensure compatibility with the
-current `rag-service` environment and installed package versions.
+current `rag_service` environment and installed package versions.
 
 ------------------------------------------------------------------------
 

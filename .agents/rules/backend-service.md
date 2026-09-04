@@ -1,13 +1,13 @@
 ---
 trigger: glob
-globs: backend-service/app/**
+globs: backend_service/app/**
 ---
 
 # Backend Service Rules
 
 ## 1. Service Responsibility
 
-`backend-service` is responsible for the application's backend API and
+`backend_service` is responsible for the application's backend API and
 application-level orchestration.
 
 It should provide a clean API boundary between the frontend and the
@@ -40,7 +40,7 @@ Use type hints throughout the codebase.
 Prefer a structure similar to:
 
 ``` text
-backend-service/
+backend_service/
 ├── app/
 │   ├── api/
 │   │   ├── routes/

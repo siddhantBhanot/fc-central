@@ -8,8 +8,8 @@ Microservices**.
 The platform is composed of multiple independently responsible services,
 including:
 
--   `backend-service`
--   `rag-service`
+-   `backend_service`
+-   `rag_service`
 -   `frontend-service`
 
 The architecture must remain modular so that additional microservices,
