@@ -1,38 +1,48 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Activity,
   ArrowUp,
   ChevronDown,
   Code2,
+  Database,
   GitBranch,
   GitMerge,
+  History,
   Layers,
-  Sparkles,
+  Loader2,
   RotateCcw,
+  Sparkles,
   CheckCircle2,
-  FileCode,
-  BookOpen,
+  AlertCircle,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
-import type { Microservice, ChatMessage } from '@/types';
+import { SourceCitationList } from '@/components/chat/SourceCitationList';
+import { FeedbackControls } from '@/components/chat/FeedbackControls';
+import { IngestionModal } from '@/components/chat/IngestionModal';
+import { ConversationHistoryDrawer } from '@/components/chat/ConversationHistoryDrawer';
+import apiClient, { ApiError } from '@/lib/api/client';
+import type { ChatMessage, Microservice } from '@/types';
 
-const SERVICES: Microservice[] = [
+const DEFAULT_SERVICES: Microservice[] = [
   {
     id: 'income-assessment-service',
     name: 'income-assessment-service',
     description: 'Income assessment rules engine & eligibility calculations',
+    has_indexed_data: true,
   },
   {
     id: 'loan-origination-service',
     name: 'loan-origination-service',
     description: 'Loan application lifecycle & underwriting workflows',
+    has_indexed_data: false,
   },
   {
     id: 'kyc-verification-service',
     name: 'kyc-verification-service',
     description: 'Identity verification & document assessment',
+    has_indexed_data: false,
   },
 ];
-
 
 const FEATURE_CARDS = [
   {
@@ -47,65 +57,37 @@ const FEATURE_CARDS = [
     icon: GitBranch,
     title: 'Business logic',
     description: 'How rules, eligibility, and calculations are evaluated under the hood.',
-    query: 'What is the business handler for FOUR_WHEELER_PERSONAL?',
+    query: 'What is the business handler for FOUR_WHEELER_PERSONAL and what endpoint does it expose?',
   },
   {
     id: 'request-flows',
     icon: GitMerge,
     title: 'Request flows',
     description: 'Trace a request end-to-end, including retries, queues, and callbacks.',
-    query: 'What is the request flow from the UI to the backend for /initiation-application?',
+    query: 'What is the usual request flow for income-assessment-service?',
   },
   {
     id: 'integrations',
     icon: Layers,
     title: 'Integrations',
     description: 'Third-party connections, webhooks, and cross-service dependencies.',
-    query: 'Which downstream services and external webhooks integrate with this service?',
+    query: 'What is Zenith and what is it used for?',
   },
 ];
 
-const SAMPLE_KOTLIN_RESPONSE = `### Business Handler: FourWheelerPersonalAssessmentHandler
-
-Found in \`income-assessment-service\` under \`src/main/kotlin/.../handlers/\`:
-
-\`\`\`kotlin
-@Service
-class FourWheelerPersonalAssessmentHandler(
-    private val ruleEngine: AssessmentRuleEngine,
-    private val telemetry: MetricCollector
-) : AssessmentHandler {
-
-    override fun assess(request: AssessmentRequest): AssessmentResult {
-        telemetry.increment("assessment.four_wheeler.personal.invoked")
-        
-        val criteria = ruleEngine.evaluatePersonalVehicle(
-            income = request.verifiedIncome,
-            obligations = request.totalObligations
-        )
-        
-        return AssessmentResult(
-            isEligible = criteria.score >= THRESHOLD,
-            maxApprovedAmount = criteria.recommendedLimit,
-            riskTier = criteria.tier
-        )
-    }
-}
-\`\`\`
-
-#### Verification Contract
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| \`verifiedIncome\` | \`BigDecimal\` | Yes | Net monthly income verified via bank statement |
-| \`totalObligations\` | \`BigDecimal\` | Yes | Active monthly EMI obligations |
-| \`isEligible\` | \`Boolean\` | Return | Status determination based on risk threshold |
-`;
-
 export function App() {
-  const [selectedService, setSelectedService] = useState<string>(SERVICES[0].id);
+  const [services, setServices] = useState<Microservice[]>(DEFAULT_SERVICES);
+  const [selectedService, setSelectedService] = useState<string>(DEFAULT_SERVICES[0].id);
   const [queryInput, setQueryInput] = useState<string>('');
   const [isChatActive, setIsChatActive] = useState<boolean>(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [backendHealth, setBackendHealth] = useState<'healthy' | 'degraded' | 'offline'>('offline');
+  const [isIngestionModalOpen, setIsIngestionModalOpen] = useState<boolean>(false);
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<{ message: string; requestId?: string } | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -116,48 +98,137 @@ export function App() {
     if (isChatActive) {
       scrollToBottom();
     }
-  }, [messages, isChatActive]);
+  }, [messages, isChatActive, isLoading]);
 
-  const handleStartChat = (queryText?: string) => {
+  // Initial health check & service discovery
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const health = await apiClient.checkHealth();
+        setBackendHealth(health.status === 'healthy' ? 'healthy' : 'degraded');
+      } catch {
+        setBackendHealth('offline');
+      }
+
+      try {
+        const remoteServices = await apiClient.listServices();
+        if (remoteServices && remoteServices.length > 0) {
+          setServices(remoteServices);
+        }
+      } catch {
+        // Keep default services if fetch fails
+      }
+    };
+
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleStartChat = async (queryText?: string) => {
     const text = (queryText || queryInput).trim();
-    if (!text) return;
+    if (!text || isLoading) return;
+
+    setErrorMessage(null);
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
+      conversationId: currentConversationId || undefined,
       role: 'user',
       content: text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    const assistantMessage: ChatMessage = {
-      id: `assistant-${Date.now()}`,
-      role: 'assistant',
-      content: text.includes('FOUR_WHEELER') || text.toLowerCase().includes('business')
-        ? SAMPLE_KOTLIN_RESPONSE
-        : `### Details for: ${text}\n\nHere is the documentation and implementation schema found in \`${selectedService}\`:\n\n\`\`\`kotlin\n// Verified contract for ${selectedService}\nfun executeWorkflow(context: ServiceContext): ResponseEntity<AssessmentResponse> {\n    return ResponseEntity.ok(AssessmentResponse.success(context.id))\n}\n\`\`\`\n\n- **Service**: \`${selectedService}\`\n- **Status**: \`200 OK\`\n- **Protocol**: SSE Streaming Response`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      status: 'complete',
-      sources: [
-        {
-          file: 'FourWheelerPersonalAssessmentHandler.kt:L12-34',
-          docType: 'Kotlin Source',
-        },
-        {
-          file: 'knowledge/api/initiation-application.md',
-          docType: 'Markdown Documentation',
-        },
-      ],
-    };
-
-    setMessages([userMessage, assistantMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setIsChatActive(true);
     setQueryInput('');
+    setIsLoading(true);
+
+    try {
+      const response = await apiClient.query({
+        query: text,
+        conversation_id: currentConversationId,
+        service: selectedService,
+        top_k: 5,
+      });
+
+      setCurrentConversationId(response.conversation_id);
+
+      const assistantMessage: ChatMessage = {
+        id: response.message_id,
+        conversationId: response.conversation_id,
+        role: 'assistant',
+        content: response.answer,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'complete',
+        sources: response.sources,
+        latencyMs: response.latency_ms,
+        provider: response.provider,
+        model: response.model,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err: any) {
+      console.error('Query error:', err);
+      let errorDesc = 'Failed to get response from engineering intelligence service.';
+      let reqId: string | undefined;
+
+      if (err instanceof ApiError) {
+        errorDesc = err.message;
+        reqId = err.requestId;
+      } else if (err.message) {
+        errorDesc = err.message;
+      }
+
+      setErrorMessage({ message: errorDesc, requestId: reqId });
+
+      const errorBubble: ChatMessage = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: `⚠️ **Unable to complete response:** ${errorDesc}\n\n*Please ensure the backend service and Qdrant/Groq are reachable.*`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'error',
+      };
+      setMessages((prev) => [...prev, errorBubble]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleResetHome = () => {
     setIsChatActive(false);
     setMessages([]);
+    setCurrentConversationId(null);
     setQueryInput('');
+    setErrorMessage(null);
+  };
+
+  const handleSelectConversation = async (conversationId: string) => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const detail = await apiClient.getConversation(conversationId);
+      setCurrentConversationId(detail.id);
+      setSelectedService(detail.service);
+
+      const loadedMessages: ChatMessage[] = detail.messages.map((m) => ({
+        id: m.id,
+        conversationId: detail.id,
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content,
+        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'complete',
+        sources: m.sources,
+      }));
+
+      setMessages(loadedMessages);
+      setIsChatActive(true);
+    } catch (err: any) {
+      console.error('Failed to load conversation:', err);
+      setErrorMessage({ message: 'Failed to load conversation history.' });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -165,7 +236,7 @@ export function App() {
       {/* Outer White Card matching Freecharge Biz */}
       <div className="max-w-5xl w-full mx-auto bg-white rounded-[28px] md:rounded-[40px] shadow-sm border border-slate-100 flex flex-col min-h-[92vh] overflow-hidden">
         
-        {/* Persistent Top Header matching the image */}
+        {/* Persistent Top Header */}
         <header className="px-6 md:px-10 py-5 flex items-center justify-between border-b border-slate-100 bg-white shrink-0">
           {/* Freecharge Logo on Left */}
           <button
@@ -194,30 +265,93 @@ export function App() {
             </div>
           </button>
 
-          {/* Right Action: Login / Home Toggle */}
-          <div className="flex items-center gap-3">
+          {/* Center: Live Backend Status Badge */}
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-medium">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                backendHealth === 'healthy'
+                  ? 'bg-emerald-500 animate-pulse'
+                  : backendHealth === 'degraded'
+                  ? 'bg-amber-500'
+                  : 'bg-rose-500'
+              }`}
+            />
+            <span className="text-slate-600">
+              {backendHealth === 'healthy'
+                ? 'Backend Online · Groq & Qdrant'
+                : backendHealth === 'degraded'
+                ? 'Backend Degraded'
+                : 'Backend Offline (port 8000)'}
+            </span>
+          </div>
+
+          {/* Right Actions: Knowledge Ingest, History, New Chat */}
+          <div className="flex items-center gap-2">
+            {/* Knowledge Ingestion Modal Trigger */}
+            <button
+              onClick={() => setIsIngestionModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Index service knowledge"
+            >
+              <Database className="w-3.5 h-3.5 text-[#f05a28]" />
+              <span className="hidden md:inline">Index Docs</span>
+            </button>
+
+            {/* Conversation History Drawer Trigger */}
+            <button
+              onClick={() => setIsHistoryDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              title="View conversation history"
+            >
+              <History className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">History</span>
+            </button>
+
             {isChatActive && (
               <button
                 onClick={handleResetHome}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Start a new conversation"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">New Chat</span>
               </button>
             )}
+
             <button
               type="button"
-              className="px-6 py-2 rounded-full bg-[#f05a28] hover:bg-[#d94b1c] active:scale-98 text-white text-xs md:text-sm font-semibold shadow-xs transition-all cursor-pointer"
+              className="px-5 py-1.5 rounded-full bg-[#f05a28] hover:bg-[#d94b1c] active:scale-98 text-white text-xs md:text-sm font-semibold shadow-xs transition-all cursor-pointer"
             >
               Login
             </button>
           </div>
         </header>
 
+        {/* Global Error Banner if any */}
+        {errorMessage && (
+          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2 flex items-center justify-between text-xs text-rose-700">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600" />
+              <span>{errorMessage.message}</span>
+              {errorMessage.requestId && (
+                <span className="font-mono text-[10px] text-rose-500">
+                  (Req: {errorMessage.requestId})
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-rose-500 hover:text-rose-800 font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Dynamic Body: Home Screen vs Active Chat */}
         {!isChatActive ? (
           /* =========================================================================
-             1. HOME SCREEN (Exact match to the user's attached photo)
+             1. HOME SCREEN
              ========================================================================= */
           <main className="flex-1 px-6 md:px-12 py-8 md:py-12 flex flex-col justify-center items-center">
             <div className="w-full max-w-2xl mx-auto flex flex-col items-center">
@@ -255,7 +389,7 @@ export function App() {
                       onChange={(e) => setSelectedService(e.target.value)}
                       className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
                     >
-                      {SERVICES.map((s) => (
+                      {services.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>
@@ -277,6 +411,7 @@ export function App() {
                   }}
                   placeholder={`Ask about ${selectedService}...`}
                   rows={2}
+                  disabled={isLoading}
                   className="w-full resize-none bg-transparent text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none py-1"
                 />
 
@@ -284,16 +419,20 @@ export function App() {
                 <div className="flex justify-end pt-1">
                   <button
                     onClick={() => handleStartChat()}
-                    disabled={!queryInput.trim()}
+                    disabled={!queryInput.trim() || isLoading}
                     type="button"
                     className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                      queryInput.trim()
+                      queryInput.trim() && !isLoading
                         ? 'bg-[#f05a28] text-white shadow-xs hover:bg-[#d94b1c]'
                         : 'bg-orange-100 text-[#f05a28] hover:bg-[#f05a28] hover:text-white'
                     }`}
                     title="Send message"
                   >
-                    <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -331,7 +470,7 @@ export function App() {
 
               {/* Disclaimer at bottom */}
               <div className="text-center text-[11px] text-slate-400 mt-10 space-y-0.5">
-                <p>Answers are generated from indexed service documentation and may need verification.</p>
+                <p>Answers are grounded live with Qdrant Cloud vectors and Groq inference.</p>
                 <p className="text-[10px] text-slate-400">FreeCharge Biz · Developer Assistant</p>
               </div>
 
@@ -339,7 +478,7 @@ export function App() {
           </main>
         ) : (
           /* =========================================================================
-             2. CHAT WINDOW (Supporting text removed, messages above, input shifted to bottom)
+             2. CHAT WINDOW
              ========================================================================= */
           <main className="flex-1 flex flex-col justify-between p-4 md:p-8 min-w-0 bg-white">
             
@@ -347,10 +486,15 @@ export function App() {
             <div className="flex-1 overflow-y-auto max-w-3xl mx-auto w-full space-y-6 pb-6 pr-1">
               
               {/* Service header indicator */}
-              <div className="flex items-center justify-center py-2">
+              <div className="flex items-center justify-center gap-2 py-1">
                 <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
                   Inspecting: <span className="text-[#f05a28] font-mono">{selectedService}</span>
                 </span>
+                {currentConversationId && (
+                  <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded-full border border-slate-200/60 truncate max-w-[120px]">
+                    ID: {currentConversationId.slice(0, 8)}...
+                  </span>
+                )}
               </div>
 
               {messages.map((msg) => (
@@ -387,25 +531,26 @@ export function App() {
 
                         {/* Citations if available */}
                         {msg.sources && msg.sources.length > 0 && (
-                          <div className="pt-3 border-t border-slate-200/80">
-                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                              Referenced Sources
+                          <SourceCitationList sources={msg.sources} />
+                        )}
+
+                        {/* Message Quality Feedback Controls */}
+                        {msg.conversationId && msg.id && (
+                          <FeedbackControls
+                            messageId={msg.id}
+                            conversationId={msg.conversationId}
+                            initialRating={msg.feedbackRating}
+                          />
+                        )}
+
+                        {/* Telemetry Footer */}
+                        {msg.latencyMs && (
+                          <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400 font-mono">
+                            <span className="flex items-center gap-1">
+                              <Activity className="w-3 h-3 text-emerald-500" />
+                              <span>Latency: {msg.latencyMs.toFixed(0)} ms</span>
                             </span>
-                            <div className="mt-1.5 flex flex-wrap gap-2 text-xs">
-                              {msg.sources.map((src, i) => (
-                                <span
-                                  key={i}
-                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 font-mono text-[11px] shadow-2xs"
-                                >
-                                  {src.file.endsWith('.kt') ? (
-                                    <FileCode className="w-3 h-3 text-[#f05a28]" />
-                                  ) : (
-                                    <BookOpen className="w-3 h-3 text-indigo-500" />
-                                  )}
-                                  <span>{src.file}</span>
-                                </span>
-                              ))}
-                            </div>
+                            <span>Model: {msg.model || 'gpt-oss-120b'}</span>
                           </div>
                         )}
                       </div>
@@ -413,10 +558,23 @@ export function App() {
                   )}
                 </div>
               ))}
+
+              {/* Generating / Thinking Pulse Indicator */}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl rounded-tl-xs bg-[#f8fafc] border border-slate-200 px-4 py-3 shadow-xs flex items-center gap-3">
+                    <Loader2 className="w-4 h-4 text-[#f05a28] animate-spin" />
+                    <span className="text-xs text-slate-600 font-medium">
+                      Retrieving neural vectors & generating answer...
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Shifted Bottom Input Box (matching the card design from home screen) */}
+            {/* Shifted Bottom Input Box */}
             <div className="max-w-3xl mx-auto w-full pt-2">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 focus-within:border-slate-300 focus-within:shadow-md transition-all">
                 {/* Top Row: SERVICE CONTEXT + Dropdown */}
@@ -430,7 +588,7 @@ export function App() {
                       onChange={(e) => setSelectedService(e.target.value)}
                       className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
                     >
-                      {SERVICES.map((s) => (
+                      {services.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>
@@ -452,6 +610,7 @@ export function App() {
                   }}
                   placeholder={`Ask a follow up question about ${selectedService}...`}
                   rows={2}
+                  disabled={isLoading}
                   className="w-full resize-none bg-transparent text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none py-1"
                 />
 
@@ -462,16 +621,20 @@ export function App() {
                   </span>
                   <button
                     onClick={() => handleStartChat()}
-                    disabled={!queryInput.trim()}
+                    disabled={!queryInput.trim() || isLoading}
                     type="button"
                     className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                      queryInput.trim()
+                      queryInput.trim() && !isLoading
                         ? 'bg-[#f05a28] text-white shadow-xs hover:bg-[#d94b1c]'
                         : 'bg-orange-100 text-[#f05a28] hover:bg-[#f05a28] hover:text-white'
                     }`}
                     title="Send message"
                   >
-                    <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -481,6 +644,22 @@ export function App() {
         )}
 
       </div>
+
+      {/* Knowledge Ingestion Modal */}
+      <IngestionModal
+        isOpen={isIngestionModalOpen}
+        onClose={() => setIsIngestionModalOpen(false)}
+        service={selectedService}
+      />
+
+      {/* Conversation History Drawer */}
+      <ConversationHistoryDrawer
+        isOpen={isHistoryDrawerOpen}
+        onClose={() => setIsHistoryDrawerOpen(false)}
+        currentConversationId={currentConversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewChat={handleResetHome}
+      />
     </div>
   );
 }
