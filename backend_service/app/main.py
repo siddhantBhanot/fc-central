@@ -8,14 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend_service.app.api.middleware.request_id import RequestIdMiddleware, get_current_request_id
-from backend_service.app.api.routes import feedback, health, knowledge, query, services
+from backend_service.app.api.routes import auth, feedback, health, knowledge, query, services
 from backend_service.app.api.schemas.common import ErrorResponse
 from backend_service.app.domain.exceptions.base import (
+    AuthenticationException,
     DomainException,
     EntityNotFoundException,
+    ForbiddenException,
     RAGServiceException,
     ValidationException,
 )
+
 from backend_service.app.infrastructure.configuration.settings import get_settings
 from backend_service.app.infrastructure.persistence.database import get_database
 
@@ -103,6 +106,33 @@ def create_app() -> FastAPI:
             ).model_dump(),
         )
 
+    @app.exception_handler(AuthenticationException)
+    async def auth_error_handler(request: Request, exc: AuthenticationException):
+        req_id = getattr(request.state, "request_id", get_current_request_id())
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Bearer"},
+            content=ErrorResponse(
+                code=exc.code,
+                message=exc.message,
+                request_id=req_id,
+                details=exc.details,
+            ).model_dump(),
+        )
+
+    @app.exception_handler(ForbiddenException)
+    async def forbidden_error_handler(request: Request, exc: ForbiddenException):
+        req_id = getattr(request.state, "request_id", get_current_request_id())
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=ErrorResponse(
+                code=exc.code,
+                message=exc.message,
+                request_id=req_id,
+                details=exc.details,
+            ).model_dump(),
+        )
+
     @app.exception_handler(DomainException)
     async def domain_error_handler(request: Request, exc: DomainException):
         req_id = getattr(request.state, "request_id", get_current_request_id())
@@ -117,15 +147,17 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def pydantic_validation_handler(request: Request, exc: RequestValidationError):
+    async def request_validation_handler(request: Request, exc: RequestValidationError):
         req_id = getattr(request.state, "request_id", get_current_request_id())
+        errors = exc.errors()
+        logger.warning("Request validation error [%s]: %s", req_id, errors)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content=ErrorResponse(
                 code="REQUEST_VALIDATION_ERROR",
                 message="Invalid request payload or parameters.",
                 request_id=req_id,
-                details={"errors": exc.errors()},
+                details={"errors": errors},
             ).model_dump(),
         )
 
@@ -157,6 +189,7 @@ def create_app() -> FastAPI:
     # 4. Register Versioned Routes under /api/v1
     from fastapi import APIRouter
     api_v1 = APIRouter(prefix="/api/v1")
+    api_v1.include_router(auth.router)
     api_v1.include_router(health.router)
     api_v1.include_router(query.router)
     api_v1.include_router(feedback.router)

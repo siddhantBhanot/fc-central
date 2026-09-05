@@ -21,12 +21,6 @@ export function ConversationHistoryDrawer({
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadConversations();
-    }
-  }, [isOpen]);
-
   const loadConversations = async () => {
     setIsLoading(true);
     try {
@@ -38,6 +32,12 @@ export function ConversationHistoryDrawer({
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadConversations();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

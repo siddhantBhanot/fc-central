@@ -27,17 +27,19 @@ class QueryService:
         conversation_id: Optional[str] = None,
         service: str = "income-assessment-service",
         top_k: int = 5,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         cleaned_query = query_text.strip()
         if not cleaned_query:
             raise ValidationException("Query text cannot be empty.")
 
-        # 1. Resolve or create conversation
+        # 1. Resolve or create conversation with user scope
         title_snippet = cleaned_query[:60] + ("..." if len(cleaned_query) > 60 else "")
         conversation = await self.conversation_repo.get_or_create_conversation(
             conversation_id=conversation_id,
             service=service,
             title=title_snippet,
+            user_id=user_id,
         )
 
         # 2. Persist user message
@@ -83,13 +85,28 @@ class QueryService:
             "created_at": assistant_msg.created_at.isoformat(),
         }
 
-    async def get_conversation_history(self, conversation_id: str) -> Conversation:
-        conversation = await self.conversation_repo.get_conversation(conversation_id)
+    async def get_conversation_history(
+        self,
+        conversation_id: str,
+        user_id: Optional[str] = None,
+    ) -> Conversation:
+        conversation = await self.conversation_repo.get_conversation(
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
         if not conversation:
             raise EntityNotFoundException("Conversation", conversation_id)
         return conversation
 
     async def list_conversations(
-        self, service: Optional[str] = None, limit: int = 20
+        self,
+        service: Optional[str] = None,
+        limit: int = 20,
+        user_id: Optional[str] = None,
     ) -> List[Conversation]:
-        return await self.conversation_repo.list_conversations(service=service, limit=limit)
+        return await self.conversation_repo.list_conversations(
+            service=service,
+            limit=limit,
+            user_id=user_id,
+        )
+

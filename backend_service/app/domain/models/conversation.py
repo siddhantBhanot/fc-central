@@ -68,8 +68,10 @@ class Message:
 @dataclass
 class Conversation:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: Optional[str] = None
     service: str = "income-assessment-service"
     title: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     messages: List[Message] = field(default_factory=list)
+

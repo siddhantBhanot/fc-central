@@ -10,18 +10,23 @@ import {
   History,
   Layers,
   Loader2,
+  LogOut,
   RotateCcw,
   Sparkles,
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
+
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { SourceCitationList } from '@/components/chat/SourceCitationList';
 import { FeedbackControls } from '@/components/chat/FeedbackControls';
 import { IngestionModal } from '@/components/chat/IngestionModal';
 import { ConversationHistoryDrawer } from '@/components/chat/ConversationHistoryDrawer';
+import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
+import { AuthScreen } from '@/components/auth/AuthScreen';
 import apiClient, { ApiError } from '@/lib/api/client';
 import type { ChatMessage, Microservice } from '@/types';
+
 
 const DEFAULT_SERVICES: Microservice[] = [
   {
@@ -75,7 +80,8 @@ const FEATURE_CARDS = [
   },
 ];
 
-export function App() {
+function DashboardApp() {
+  const { user, isAuthenticated, isLoading: isAuthLoading, logout } = useAuth();
   const [services, setServices] = useState<Microservice[]>(DEFAULT_SERVICES);
   const [selectedService, setSelectedService] = useState<string>(DEFAULT_SERVICES[0].id);
   const [queryInput, setQueryInput] = useState<string>('');
@@ -87,6 +93,7 @@ export function App() {
   const [isIngestionModalOpen, setIsIngestionModalOpen] = useState<boolean>(false);
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<{ message: string; requestId?: string } | null>(null);
+
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -231,7 +238,24 @@ export function App() {
     }
   };
 
+  if (isAuthLoading) {
+
+    return (
+      <div className="min-h-screen bg-[#edf3f8] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-[#f05a28]/20 border-t-[#f05a28] rounded-full animate-spin" />
+          <span className="text-xs text-slate-500 font-semibold tracking-wider uppercase">Validating session...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthScreen />;
+  }
+
   return (
+
     <div className="min-h-screen bg-[#edf3f8] flex flex-col justify-between p-3 sm:p-5 md:p-8 font-sans antialiased text-slate-800">
       {/* Outer White Card matching Freecharge Biz */}
       <div className="max-w-5xl w-full mx-auto bg-white rounded-[28px] md:rounded-[40px] shadow-sm border border-slate-100 flex flex-col min-h-[92vh] overflow-hidden">
@@ -318,14 +342,36 @@ export function App() {
               </button>
             )}
 
-            <button
-              type="button"
-              className="px-5 py-1.5 rounded-full bg-[#f05a28] hover:bg-[#d94b1c] active:scale-98 text-white text-xs md:text-sm font-semibold shadow-xs transition-all cursor-pointer"
-            >
-              Login
-            </button>
+            {/* User Identity & Logout */}
+            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200/80 text-xs"
+                title={`Signed in as ${user?.email}`}
+              >
+                <span className="w-5 h-5 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center justify-center uppercase shadow-xs">
+                  {user?.name ? user.name.charAt(0) : 'E'}
+                </span>
+                <span className="font-semibold text-slate-700 max-w-[120px] truncate hidden md:inline">
+                  {user?.name || user?.email}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetHome();
+                  logout();
+                }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                title="Sign out of FC Central"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
           </div>
         </header>
+
 
         {/* Global Error Banner if any */}
         {errorMessage && (
@@ -664,4 +710,13 @@ export function App() {
   );
 }
 
+export function App() {
+  return (
+    <AuthProvider>
+      <DashboardApp />
+    </AuthProvider>
+  );
+}
+
 export default App;
+

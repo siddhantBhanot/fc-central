@@ -1,14 +1,18 @@
 import { config } from '@/config/env';
 import type {
+  AuthResponse,
   ConversationDetailResponse,
   ConversationSummary,
   FeedbackRequest,
   FeedbackResponse,
   HealthResponse,
   KnowledgeIngestResponse,
+  LoginRequest,
   Microservice,
   QueryRequest,
   QueryResponse,
+  SignupRequest,
+  User,
 } from '@/types';
 
 export class ApiError extends Error {
@@ -33,9 +37,18 @@ export class ApiError extends Error {
  */
 export class ApiClient {
   private baseUrl: string;
+  private token: string | null = null;
 
   constructor(baseUrl: string = config.apiBaseUrl) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
+  }
+
+  setToken(token: string | null): void {
+    this.token = token;
+  }
+
+  getToken(): string | null {
+    return this.token;
   }
 
   getApiUrl(endpoint: string): string {
@@ -51,6 +64,10 @@ export class ApiClient {
       headers.set('Content-Type', 'application/json');
     }
 
+    if (this.token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${this.token}`);
+    }
+
     const response = await fetch(url, {
       ...options,
       headers,
@@ -58,12 +75,37 @@ export class ApiClient {
 
     const requestId = response.headers.get('X-Request-ID') || undefined;
 
+
     if (!response.ok) {
       try {
         const errorJson = await response.json();
+        let message = errorJson.message;
+
+        // If Pydantic field validation errors exist, extract the first human-readable description
+        if (errorJson.details?.errors && Array.isArray(errorJson.details.errors) && errorJson.details.errors.length > 0) {
+          const firstErr = errorJson.details.errors[0];
+          const field = Array.isArray(firstErr.loc) ? firstErr.loc[firstErr.loc.length - 1] : undefined;
+          const msg = firstErr.msg;
+          if (field && msg) {
+            message = `${String(field).charAt(0).toUpperCase() + String(field).slice(1)}: ${msg}`;
+          } else if (msg) {
+            message = msg;
+          }
+        }
+
+        if (!message) {
+          if (response.status === 401) {
+            message = 'Invalid email or password.';
+          } else if (response.status === 403) {
+            message = 'Access forbidden.';
+          } else {
+            message = `Request failed with status ${response.status}`;
+          }
+        }
+
         throw new ApiError(
           response.status,
-          errorJson.message || `Request failed with status ${response.status}`,
+          message,
           errorJson.code || 'HTTP_ERROR',
           errorJson.request_id || requestId,
           errorJson.details
@@ -144,7 +186,58 @@ export class ApiClient {
   async listServices(): Promise<Microservice[]> {
     return this.fetch<Microservice[]>('/api/v1/services');
   }
+
+  /**
+   * Register a new user account
+   */
+  async signup(payload: SignupRequest): Promise<AuthResponse> {
+    const res = await this.fetch<AuthResponse>('/api/v1/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.access_token) {
+      this.setToken(res.access_token);
+    }
+    return res;
+  }
+
+  /**
+   * Login with email and password
+   */
+  async login(payload: LoginRequest): Promise<AuthResponse> {
+    const res = await this.fetch<AuthResponse>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.access_token) {
+      this.setToken(res.access_token);
+    }
+    return res;
+  }
+
+  /**
+   * Fetch current authenticated user profile
+   */
+  async getCurrentUser(): Promise<User> {
+    return this.fetch<User>('/api/v1/auth/me');
+  }
+
+  /**
+   * Logout user and clear local token
+   */
+  async logout(): Promise<void> {
+    try {
+      if (this.token) {
+        await this.fetch('/api/v1/auth/logout', { method: 'POST' });
+      }
+    } catch {
+      // Ignore network errors on logout
+    } finally {
+      this.setToken(null);
+    }
+  }
 }
 
 export const apiClient = new ApiClient();
 export default apiClient;
+

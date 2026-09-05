@@ -34,12 +34,22 @@ class Database:
         """Create tables and indexes if they do not already exist."""
         async with self.connection() as conn:
             await conn.executescript("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS conversations (
                     id TEXT PRIMARY KEY,
+                    user_id TEXT,
                     service TEXT NOT NULL,
                     title TEXT,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS messages (
@@ -74,11 +84,25 @@ class Database:
                     completed_at TEXT
                 );
 
+                CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+                CREATE INDEX IF NOT EXISTS idx_conversations_service ON conversations(service);
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
                 CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback(message_id);
-                CREATE INDEX IF NOT EXISTS idx_conversations_service ON conversations(service);
             """)
+
+            # Ensure user_id column exists if table was created in an earlier schema version
+            cursor = await conn.execute("PRAGMA table_info(conversations);")
+            columns = [row["name"] for row in await cursor.fetchall()]
+            if "user_id" not in columns:
+                try:
+                    await conn.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT;")
+                except Exception:
+                    pass
+
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id);")
             await conn.commit()
+
+
 
 
 _db: Optional[Database] = None

@@ -60,10 +60,19 @@ class Settings(BaseSettings):
         )
     )
 
+    # Security / JWT configuration
+    jwt_secret_key: str = Field(
+        default_factory=lambda: os.getenv("JWT_SECRET_KEY", "fc-central-dev-secret-key-32chars-minimum-required")
+    )
+    jwt_access_token_expire_minutes: int = Field(
+        default_factory=lambda: int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+    )
+
     # RAG Client adapter mode ("direct" bridges to rag_service, "mock" is standalone offline)
     rag_client_mode: str = Field(default_factory=lambda: os.getenv("RAG_CLIENT_MODE", "direct"))
     default_service: str = Field(default_factory=lambda: os.getenv("DEFAULT_SERVICE", "income-assessment-service"))
     default_top_k: int = Field(default_factory=lambda: int(os.getenv("DEFAULT_TOP_K", "5")))
+
 
 
 _settings: Optional[Settings] = None

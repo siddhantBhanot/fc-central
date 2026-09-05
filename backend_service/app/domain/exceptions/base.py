@@ -38,3 +38,24 @@ class RAGServiceException(DomainException):
             code="RAG_SERVICE_FAILURE",
             details=details or {},
         )
+
+
+class AuthenticationException(DomainException):
+    """Raised when authentication credentials or token are missing, invalid, or expired."""
+    def __init__(self, message: str = "Authentication required or invalid credentials.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            code="AUTHENTICATION_FAILED",
+            details=details or {},
+        )
+
+
+class ForbiddenException(DomainException):
+    """Raised when an authenticated user attempts to access a resource they do not own."""
+    def __init__(self, message: str = "You do not have permission to access this resource.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            code="FORBIDDEN",
+            details=details or {},
+        )
+
