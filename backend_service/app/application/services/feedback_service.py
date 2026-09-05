@@ -58,3 +58,18 @@ class FeedbackService:
             }
             for f in feedbacks
         ]
+
+    async def list_feedback(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        feedbacks = await self.feedback_repo.list_feedback(limit=limit, offset=offset)
+        return [
+            {
+                "id": f.id,
+                "message_id": f.message_id,
+                "conversation_id": f.conversation_id,
+                "rating": f.rating.value,
+                "comment": f.comment,
+                "created_at": f.created_at.isoformat(),
+            }
+            for f in feedbacks
+        ]
+

@@ -68,3 +68,23 @@ class SqliteFeedbackRepository(FeedbackRepository):
                 )
                 for row in rows
             ]
+
+    async def list_feedback(self, limit: int = 50, offset: int = 0) -> List[Feedback]:
+        async with self.db.connection() as conn:
+            cursor = await conn.execute(
+                "SELECT id, message_id, conversation_id, rating, comment, created_at FROM feedback ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+            return [
+                Feedback(
+                    id=row["id"],
+                    message_id=row["message_id"],
+                    conversation_id=row["conversation_id"],
+                    rating=FeedbackRating(row["rating"]),
+                    comment=row["comment"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                )
+                for row in rows
+            ]
+

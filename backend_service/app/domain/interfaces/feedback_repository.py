@@ -16,3 +16,7 @@ class FeedbackRepository(Protocol):
     async def get_feedback_by_conversation(self, conversation_id: str) -> List[Feedback]:
         """Retrieve feedback associated with a conversation."""
         ...
+
+    async def list_feedback(self, limit: int = 50, offset: int = 0) -> List[Feedback]:
+        """Retrieve recent feedback entries with pagination."""
+        ...
