@@ -47,6 +47,8 @@ class Database:
                     user_id TEXT,
                     service TEXT NOT NULL,
                     title TEXT,
+                    share_token TEXT UNIQUE,
+                    forked_from TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -90,7 +92,7 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback(message_id);
             """)
 
-            # Ensure user_id column exists if table was created in an earlier schema version
+            # Ensure user_id, share_token, and forked_from columns exist if table was created in an earlier schema version
             cursor = await conn.execute("PRAGMA table_info(conversations);")
             columns = [row["name"] for row in await cursor.fetchall()]
             if "user_id" not in columns:
@@ -99,7 +101,21 @@ class Database:
                 except Exception:
                     pass
 
+            if "share_token" not in columns:
+                try:
+                    await conn.execute("ALTER TABLE conversations ADD COLUMN share_token TEXT;")
+                except Exception:
+                    pass
+
+            if "forked_from" not in columns:
+                try:
+                    await conn.execute("ALTER TABLE conversations ADD COLUMN forked_from TEXT;")
+                except Exception:
+                    pass
+
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id);")
+            await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_share_token ON conversations(share_token);")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_forked_from ON conversations(forked_from);")
             await conn.commit()
 
 

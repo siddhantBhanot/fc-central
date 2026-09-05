@@ -40,3 +40,20 @@ class ConversationRepository(Protocol):
         """List conversations, optionally filtered by microservice and user."""
         ...
 
+    async def generate_share_token(self, conversation_id: str, user_id: str) -> str:
+        """Generate or retrieve a unique share_token for a conversation owned by user_id."""
+        ...
+
+    async def get_conversation_by_share_token(self, share_token: str) -> Optional[Conversation]:
+        """Retrieve conversation and full message history by share_token."""
+        ...
+
+    async def fork_conversation(
+        self,
+        source_conversation_id: str,
+        new_user_id: str,
+    ) -> Conversation:
+        """Clone all previous messages from source conversation into a new conversation for new_user_id."""
+        ...
+
+

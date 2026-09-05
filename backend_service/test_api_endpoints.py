@@ -233,6 +233,106 @@ class TestBackendServiceAPI(unittest.TestCase):
         self.assertIn("X-Request-ID", bad_response.headers)
         self.assertEqual(err_data["request_id"], bad_response.headers["X-Request-ID"])
 
+    def test_08_conversation_sharing_and_fork_on_reply(self):
+        """Test conversation sharing link generation and automatic fork-on-reply."""
+        # 1. Alice creates a multi-turn conversation
+        alice_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": "alice@freecharge.com", "password": "securepassword123"},
+        ).json()
+        alice_headers = {"Authorization": f"Bearer {alice_login['access_token']}"}
+
+        q1 = self.client.post(
+            "/api/v1/query",
+            json={"query": "Alice original question on income assessment"},
+            headers=alice_headers,
+        ).json()
+        alice_cid = q1["conversation_id"]
+
+        q2 = self.client.post(
+            "/api/v1/query",
+            json={"query": "Alice follow up question", "conversation_id": alice_cid},
+            headers=alice_headers,
+        ).json()
+        self.assertEqual(q2["conversation_id"], alice_cid)
+
+        # 2. Alice generates a share token
+        share_resp = self.client.post(
+            f"/api/v1/conversations/{alice_cid}/share",
+            headers=alice_headers,
+        )
+        self.assertEqual(share_resp.status_code, 200)
+        share_data = share_resp.json()
+        share_token = share_data["share_token"]
+        self.assertTrue(len(share_token) > 0)
+        self.assertIn(share_token, share_data["share_url"])
+
+        # 3. Unauthenticated request to shared conversation must fail with 401
+        unauth_resp = self.client.get(f"/api/v1/shared/{share_token}")
+        self.assertEqual(unauth_resp.status_code, 401)
+
+        # 4. Bob (authenticated) can view Alice's shared conversation
+        bob_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": "bob@freecharge.com", "password": "bobpassword123"},
+        ).json()
+        bob_headers = {"Authorization": f"Bearer {bob_login['access_token']}"}
+
+        bob_view = self.client.get(f"/api/v1/shared/{share_token}", headers=bob_headers)
+        self.assertEqual(bob_view.status_code, 200)
+        bob_view_data = bob_view.json()
+        self.assertEqual(bob_view_data["id"], alice_cid)
+        self.assertFalse(bob_view_data["is_owner"], "Bob is not the owner of Alice's shared thread")
+        self.assertEqual(len(bob_view_data["messages"]), 4, "Should have 2 turns = 4 messages")
+
+        # 5. Alice views her shared conversation -> is_owner is True
+        alice_view = self.client.get(f"/api/v1/shared/{share_token}", headers=alice_headers)
+        self.assertEqual(alice_view.status_code, 200)
+        self.assertTrue(alice_view.json()["is_owner"])
+
+        # 6. Alice replies to her own shared thread -> continues normally (no fork)
+        alice_reply = self.client.post(
+            "/api/v1/query",
+            json={"query": "Alice 3rd query on same thread", "share_token": share_token},
+            headers=alice_headers,
+        ).json()
+        self.assertEqual(alice_reply["conversation_id"], alice_cid)
+        self.assertFalse(alice_reply["forked"])
+
+        # Alice's conversation now has 6 messages
+        alice_conv_after = self.client.get(f"/api/v1/conversations/{alice_cid}", headers=alice_headers).json()
+        self.assertEqual(len(alice_conv_after["messages"]), 6)
+
+        # 7. Bob replies to Alice's shared thread -> FORK ON REPLY!
+        bob_reply = self.client.post(
+            "/api/v1/query",
+            json={"query": "Bob branching question on this thread", "share_token": share_token},
+            headers=bob_headers,
+        ).json()
+        bob_forked_cid = bob_reply["conversation_id"]
+
+        self.assertNotEqual(bob_forked_cid, alice_cid, "Forked conversation must have a brand new session ID")
+        self.assertTrue(bob_reply["forked"])
+        self.assertEqual(bob_reply["forked_from"], alice_cid)
+
+        # 8. Check Bob's forked conversation:
+        # It must contain Alice's 6 previous messages + Bob's 1 prompt + 1 model reply = 8 messages
+        bob_conv = self.client.get(f"/api/v1/conversations/{bob_forked_cid}", headers=bob_headers).json()
+        self.assertEqual(len(bob_conv["messages"]), 8)
+        self.assertEqual(bob_conv["forked_from"], alice_cid)
+        self.assertEqual(bob_conv["messages"][-2]["content"], "Bob branching question on this thread")
+
+        # 9. Verify Alice's original conversation is completely UNTOUCHED
+        alice_check = self.client.get(f"/api/v1/conversations/{alice_cid}", headers=alice_headers).json()
+        self.assertEqual(len(alice_check["messages"]), 6, "Alice's original thread must remain untouched")
+
+        # 10. Bob sees the forked conversation in his list
+        bob_list = self.client.get("/api/v1/conversations", headers=bob_headers).json()
+        bob_cids = [c["id"] for c in bob_list]
+        self.assertIn(bob_forked_cid, bob_cids)
+        self.assertNotIn(alice_cid, bob_cids)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

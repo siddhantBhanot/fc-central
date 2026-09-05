@@ -15,6 +15,7 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  Share2,
 } from 'lucide-react';
 
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
@@ -22,6 +23,7 @@ import { SourceCitationList } from '@/components/chat/SourceCitationList';
 import { FeedbackControls } from '@/components/chat/FeedbackControls';
 import { IngestionModal } from '@/components/chat/IngestionModal';
 import { ConversationHistoryDrawer } from '@/components/chat/ConversationHistoryDrawer';
+import { ShareModal } from '@/components/chat/ShareModal';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import apiClient, { ApiError } from '@/lib/api/client';
@@ -92,6 +94,21 @@ function DashboardApp() {
   const [backendHealth, setBackendHealth] = useState<'healthy' | 'degraded' | 'offline'>('offline');
   const [isIngestionModalOpen, setIsIngestionModalOpen] = useState<boolean>(false);
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState<boolean>(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [isSharingLoading, setIsSharingLoading] = useState<boolean>(false);
+  const [activeSharedToken, setActiveSharedToken] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('share');
+    }
+    return null;
+  });
+  const [sharedInfo, setSharedInfo] = useState<{
+    isOwner: boolean;
+    title?: string | null;
+    forkedFrom?: string | null;
+  } | null>(null);
+  const [forkNotification, setForkNotification] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<{ message: string; requestId?: string } | null>(null);
 
 
@@ -132,6 +149,47 @@ function DashboardApp() {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-load shared conversation when authenticated and share token is present in URL
+  useEffect(() => {
+    if (!isAuthenticated || !activeSharedToken) return;
+
+    const loadSharedConversation = async () => {
+      setIsLoading(true);
+      setErrorMessage(null);
+      try {
+        const data = await apiClient.getSharedConversation(activeSharedToken);
+        setCurrentConversationId(data.id);
+        setSelectedService(data.service);
+        setShareToken(data.share_token);
+        setSharedInfo({
+          isOwner: data.is_owner,
+          title: data.title,
+          forkedFrom: data.forked_from,
+        });
+
+        const loadedMessages: ChatMessage[] = data.messages.map((m) => ({
+          id: m.id,
+          conversationId: data.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+          timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: 'complete',
+          sources: m.sources,
+        }));
+
+        setMessages(loadedMessages);
+        setIsChatActive(true);
+      } catch (err: any) {
+        console.error('Failed to load shared conversation:', err);
+        setErrorMessage({ message: 'Shared conversation not found or link has expired.' });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSharedConversation();
+  }, [isAuthenticated, activeSharedToken]);
+
   const handleStartChat = async (queryText?: string) => {
     const text = (queryText || queryInput).trim();
     if (!text || isLoading) return;
@@ -155,11 +213,24 @@ function DashboardApp() {
       const response = await apiClient.query({
         query: text,
         conversation_id: currentConversationId,
+        share_token: activeSharedToken || undefined,
         service: selectedService,
         top_k: 5,
       });
 
-      setCurrentConversationId(response.conversation_id);
+      if (response.forked) {
+        setCurrentConversationId(response.conversation_id);
+        setActiveSharedToken(null);
+        setSharedInfo(null);
+        setShareToken(null);
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        setForkNotification('Conversation branched! You are now continuing on your own personal fork.');
+        setTimeout(() => setForkNotification(null), 6000);
+      } else {
+        setCurrentConversationId(response.conversation_id);
+      }
 
       const assistantMessage: ChatMessage = {
         id: response.message_id,
@@ -202,17 +273,47 @@ function DashboardApp() {
     }
   };
 
+  const handleOpenShare = async () => {
+    if (!currentConversationId) return;
+    setIsShareModalOpen(true);
+    setIsSharingLoading(true);
+    try {
+      const res = await apiClient.shareConversation(currentConversationId);
+      setShareToken(res.share_token);
+    } catch (err: any) {
+      console.error('Failed to generate share link:', err);
+      setErrorMessage({ message: err.message || 'Failed to generate share link.' });
+    } finally {
+      setIsSharingLoading(false);
+    }
+  };
+
   const handleResetHome = () => {
     setIsChatActive(false);
     setMessages([]);
     setCurrentConversationId(null);
     setQueryInput('');
     setErrorMessage(null);
+    setActiveSharedToken(null);
+    setSharedInfo(null);
+    setShareToken(null);
+    setForkNotification(null);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   };
 
   const handleSelectConversation = async (conversationId: string) => {
     setIsLoading(true);
     setErrorMessage(null);
+    setActiveSharedToken(null);
+    setSharedInfo(null);
+    setShareToken(null);
+    setForkNotification(null);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     try {
       const detail = await apiClient.getConversation(conversationId);
       setCurrentConversationId(detail.id);
@@ -330,6 +431,18 @@ function DashboardApp() {
               <History className="w-3.5 h-3.5" />
               <span className="hidden md:inline">History</span>
             </button>
+
+            {/* Share Button when conversation is active */}
+            {currentConversationId && isChatActive && (
+              <button
+                onClick={handleOpenShare}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-[#f05a28] bg-orange-50 hover:bg-orange-100 transition-colors cursor-pointer shadow-xs"
+                title="Share this conversation"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Share</span>
+              </button>
+            )}
 
             {isChatActive && (
               <button
@@ -543,6 +656,38 @@ function DashboardApp() {
                 )}
               </div>
 
+              {/* Shared Thread Indicator Banner */}
+              {sharedInfo && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-950 text-xs flex items-center justify-between gap-3 shadow-xs animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <GitBranch className="w-4 h-4 text-amber-700 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="font-bold">
+                        {sharedInfo.isOwner
+                          ? 'Viewing your shared conversation'
+                          : 'Viewing shared conversation'}
+                      </span>
+                      <span className="text-amber-800 text-[11px] block sm:inline sm:ml-1.5 truncate">
+                        {sharedInfo.isOwner
+                          ? '— anyone with this link can inspect and branch off this thread.'
+                          : '— replying will automatically fork this thread into your personal account.'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 shrink-0">
+                    {sharedInfo.isOwner ? 'Shared Link' : 'Fork-on-Reply'}
+                  </span>
+                </div>
+              )}
+
+              {/* Fork Notification Banner */}
+              {forkNotification && (
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 animate-in fade-in shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-semibold">{forkNotification}</span>
+                </div>
+              )}
+
               {messages.map((msg) => (
                 <div key={msg.id} className="space-y-2">
                   {msg.role === 'user' ? (
@@ -705,6 +850,15 @@ function DashboardApp() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewChat={handleResetHome}
+      />
+
+      {/* Share Conversation Modal */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        conversationId={currentConversationId}
+        shareToken={shareToken}
+        isLoading={isSharingLoading}
       />
     </div>
   );

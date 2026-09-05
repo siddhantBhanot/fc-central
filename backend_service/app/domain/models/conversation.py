@@ -71,7 +71,10 @@ class Conversation:
     user_id: Optional[str] = None
     service: str = "income-assessment-service"
     title: Optional[str] = None
+    share_token: Optional[str] = None
+    forked_from: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     messages: List[Message] = field(default_factory=list)
+
 

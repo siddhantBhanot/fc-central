@@ -28,19 +28,70 @@ class QueryService:
         service: str = "income-assessment-service",
         top_k: int = 5,
         user_id: Optional[str] = None,
+        share_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         cleaned_query = query_text.strip()
         if not cleaned_query:
             raise ValidationException("Query text cannot be empty.")
 
-        # 1. Resolve or create conversation with user scope
         title_snippet = cleaned_query[:60] + ("..." if len(cleaned_query) > 60 else "")
-        conversation = await self.conversation_repo.get_or_create_conversation(
-            conversation_id=conversation_id,
-            service=service,
-            title=title_snippet,
-            user_id=user_id,
-        )
+        forked = False
+        forked_from = None
+
+        # 1. Resolve or Fork Conversation
+        if share_token:
+            shared_conv = await self.conversation_repo.get_conversation_by_share_token(share_token)
+            if not shared_conv:
+                raise EntityNotFoundException("Shared Conversation", share_token)
+
+            if user_id and shared_conv.user_id != user_id:
+                # Fork on reply! Clone messages into a brand-new conversation for this viewing user
+                conversation = await self.conversation_repo.fork_conversation(
+                    source_conversation_id=shared_conv.id,
+                    new_user_id=user_id,
+                )
+                forked = True
+                forked_from = shared_conv.id
+            else:
+                # Original owner replying to their own shared thread
+                conversation = shared_conv
+
+        elif conversation_id:
+            # Check if conversation exists and belongs to current user
+            existing_conv = await self.conversation_repo.get_conversation(
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+            if existing_conv:
+                conversation = existing_conv
+            else:
+                # Check if it is a shared conversation owned by another user
+                source_conv = await self.conversation_repo.get_conversation(
+                    conversation_id=conversation_id,
+                    user_id=None,
+                )
+                if source_conv and source_conv.share_token and user_id and source_conv.user_id != user_id:
+                    # Fork on reply!
+                    conversation = await self.conversation_repo.fork_conversation(
+                        source_conversation_id=source_conv.id,
+                        new_user_id=user_id,
+                    )
+                    forked = True
+                    forked_from = source_conv.id
+                else:
+                    conversation = await self.conversation_repo.get_or_create_conversation(
+                        conversation_id=conversation_id,
+                        service=service,
+                        title=title_snippet,
+                        user_id=user_id,
+                    )
+        else:
+            conversation = await self.conversation_repo.get_or_create_conversation(
+                conversation_id=None,
+                service=service,
+                title=title_snippet,
+                user_id=user_id,
+            )
 
         # 2. Persist user message
         user_msg = Message(
@@ -51,7 +102,7 @@ class QueryService:
         )
         await self.conversation_repo.add_message(conversation.id, user_msg)
 
-        # 3. Retrieve prior conversation history for multi-turn context
+        # 3. Retrieve prior conversation history for multi-turn context (includes cloned messages if forked)
         history = await self.conversation_repo.get_messages(conversation.id, limit=20)
 
         # 4. Dispatch query to RAG client
@@ -82,8 +133,22 @@ class QueryService:
             "latency_ms": rag_result.latency_ms,
             "provider": rag_result.provider,
             "model": rag_result.model,
+            "forked": forked,
+            "forked_from": forked_from,
             "created_at": assistant_msg.created_at.isoformat(),
         }
+
+    async def create_share_token(self, conversation_id: str, user_id: str) -> str:
+        return await self.conversation_repo.generate_share_token(
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
+
+    async def get_shared_conversation(self, share_token: str) -> Conversation:
+        conversation = await self.conversation_repo.get_conversation_by_share_token(share_token)
+        if not conversation:
+            raise EntityNotFoundException("Shared Conversation", share_token)
+        return conversation
 
     async def get_conversation_history(
         self,
@@ -109,4 +174,5 @@ class QueryService:
             limit=limit,
             user_id=user_id,
         )
+
 

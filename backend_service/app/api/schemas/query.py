@@ -17,6 +17,9 @@ class QueryRequest(BaseModel):
     conversation_id: Optional[str] = Field(
         default=None, description="Existing conversation ID to continue multi-turn session"
     )
+    share_token: Optional[str] = Field(
+        default=None, description="Share token if replying to or continuing a shared thread"
+    )
     service: str = Field(
         default="income-assessment-service",
         description="Target microservice identifier",
@@ -35,6 +38,8 @@ class QueryResponse(BaseModel):
     latency_ms: float = Field(..., description="Total query execution latency in milliseconds")
     provider: str = Field(default="groq", description="LLM provider category")
     model: str = Field(default="default", description="Model identifier used for inference")
+    forked: bool = Field(default=False, description="Whether this query caused a branch from a shared conversation")
+    forked_from: Optional[str] = Field(default=None, description="Source conversation ID if forked")
     created_at: str = Field(..., description="ISO 8601 timestamp")
 
 
@@ -50,6 +55,8 @@ class ConversationDetailResponse(BaseModel):
     id: str
     service: str
     title: Optional[str] = None
+    share_token: Optional[str] = None
+    forked_from: Optional[str] = None
     created_at: str
     updated_at: str
     messages: List[MessageSchema] = Field(default_factory=list)
@@ -59,5 +66,26 @@ class ConversationSummary(BaseModel):
     id: str
     service: str
     title: Optional[str] = None
+    share_token: Optional[str] = None
+    forked_from: Optional[str] = None
     created_at: str
     updated_at: str
+
+
+class ShareConversationResponse(BaseModel):
+    conversation_id: str = Field(..., description="Target conversation ID")
+    share_token: str = Field(..., description="Unique shareable UUID token")
+    share_url: str = Field(..., description="Frontend share URL path")
+
+
+class SharedConversationDetailResponse(BaseModel):
+    id: str
+    share_token: str
+    service: str
+    title: Optional[str] = None
+    forked_from: Optional[str] = None
+    is_owner: bool = Field(default=False, description="Whether the requesting user owns this conversation")
+    created_at: str
+    updated_at: str
+    messages: List[MessageSchema] = Field(default_factory=list)
+

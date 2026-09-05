@@ -48,6 +48,7 @@ export interface ChatMessage {
 export interface QueryRequest {
   query: string;
   conversation_id?: string | null;
+  share_token?: string | null;
   service?: string;
   top_k?: number;
 }
@@ -61,6 +62,8 @@ export interface QueryResponse {
   latency_ms: number;
   provider: string;
   model: string;
+  forked?: boolean;
+  forked_from?: string | null;
   created_at: string;
 }
 
@@ -112,6 +115,8 @@ export interface ConversationSummary {
   id: string;
   service: string;
   title?: string | null;
+  share_token?: string | null;
+  forked_from?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +125,32 @@ export interface ConversationDetailResponse {
   id: string;
   service: string;
   title?: string | null;
+  share_token?: string | null;
+  forked_from?: string | null;
+  created_at: string;
+  updated_at: string;
+  messages: Array<{
+    id: string;
+    role: string;
+    content: string;
+    sources: SourceCitation[];
+    created_at: string;
+  }>;
+}
+
+export interface ShareResponse {
+  conversation_id: string;
+  share_token: string;
+  share_url: string;
+}
+
+export interface SharedConversationDetailResponse {
+  id: string;
+  share_token: string;
+  service: string;
+  title?: string | null;
+  forked_from?: string | null;
+  is_owner: boolean;
   created_at: string;
   updated_at: string;
   messages: Array<{

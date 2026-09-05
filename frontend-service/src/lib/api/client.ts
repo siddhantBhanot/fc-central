@@ -11,6 +11,8 @@ import type {
   Microservice,
   QueryRequest,
   QueryResponse,
+  ShareResponse,
+  SharedConversationDetailResponse,
   SignupRequest,
   User,
 } from '@/types';
@@ -220,6 +222,22 @@ export class ApiClient {
    */
   async getCurrentUser(): Promise<User> {
     return this.fetch<User>('/api/v1/auth/me');
+  }
+
+  /**
+   * Generate or retrieve a shareable UUID token for an active conversation
+   */
+  async shareConversation(conversationId: string): Promise<ShareResponse> {
+    return this.fetch<ShareResponse>(`/api/v1/conversations/${conversationId}/share`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Retrieve a shared conversation and citations (requires user authentication)
+   */
+  async getSharedConversation(shareToken: string): Promise<SharedConversationDetailResponse> {
+    return this.fetch<SharedConversationDetailResponse>(`/api/v1/shared/${shareToken}`);
   }
 
   /**
