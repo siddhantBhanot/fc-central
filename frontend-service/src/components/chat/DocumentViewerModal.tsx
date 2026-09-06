@@ -42,20 +42,31 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
     setLoading(true);
     setError(null);
 
-    apiClient
-      .getDocument(service, file)
-      .then((data) => {
+    const fetchDoc = async () => {
+      try {
+        let data: DocumentDetailResponse;
+        if (service.includes('-kt') || service === 'income-assessment-kt') {
+          data = await apiClient.getCourseDocument(service, file);
+        } else {
+          try {
+            data = await apiClient.getDocument(service, file);
+          } catch {
+            data = await apiClient.getCourseDocument('income-assessment-kt', file);
+          }
+        }
         if (isMounted) {
           setDocData(data);
           setLoading(false);
         }
-      })
-      .catch((err) => {
+      } catch (err: any) {
         if (isMounted) {
           setError(err.message || 'Failed to load source document.');
           setLoading(false);
         }
-      });
+      }
+    };
+
+    fetchDoc();
 
     return () => {
       isMounted = false;

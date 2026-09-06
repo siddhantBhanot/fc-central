@@ -219,3 +219,99 @@ export interface ModelsResponse {
   default_model: string;
 }
 
+// Knowledge Cafe E-Learning & KT Types
+
+export interface KnowledgeCheck {
+  question: string;
+  type: string;
+  options: string[];
+  correct_option_index?: number;
+  explanation?: string;
+}
+
+export interface LessonSummary {
+  id: string;
+  lesson_index: number;
+  title: string;
+  summary: string;
+  context_files: string[];
+  status?: 'upcoming' | 'current' | 'completed';
+  knowledge_check?: KnowledgeCheck;
+}
+
+export interface CourseEnrollment {
+  id: string;
+  course_id: string;
+  current_lesson_index: number;
+  completed_lessons: string[];
+  overall_progress: number;
+  is_completed: boolean;
+  knowledge_check_results?: Record<string, any>;
+  updated_at: string;
+}
+
+export interface CourseSummary {
+  id: string;
+  title: string;
+  description: string;
+  target_service: string;
+  domain: string;
+  target_audience: string;
+  difficulty: string;
+  estimated_duration: string;
+  icon?: string;
+  tags?: string[];
+  total_lessons: number;
+  enrollment?: CourseEnrollment | null;
+}
+
+export interface CourseDetail extends CourseSummary {
+  lessons: LessonSummary[];
+}
+
+export interface LessonDoubt {
+  id: string;
+  user_id: string;
+  course_id: string;
+  lesson_id: string;
+  question: string;
+  answer: string;
+  sources: SourceCitation[];
+  created_at: string;
+}
+
+export interface LessonDetail {
+  course_id: string;
+  lesson_id: string;
+  lesson_index: number;
+  title: string;
+  summary: string;
+  content: string;
+  takeaways: string[];
+  sources: SourceCitation[];
+  knowledge_check?: KnowledgeCheck;
+  doubts: LessonDoubt[];
+  is_completed: boolean;
+  model: string;
+}
+
+export interface CompleteLessonResult {
+  enrollment: CourseEnrollment;
+  completed_lesson_id: string;
+  next_lesson?: LessonSummary;
+  is_course_completed: boolean;
+}
+
+export interface KnowledgeCheckResult {
+  lesson_id: string;
+  is_correct: boolean;
+  correct_option_index: number;
+  explanation: string;
+}
+
+export interface EnrollResult {
+  enrollment: CourseEnrollment;
+  course: CourseDetail;
+  current_lesson?: LessonSummary;
+}
+

@@ -127,8 +127,84 @@ class MockRAGClient(RAGClientProtocol):
             source_path=source_directory or f"sample_data/{service}",
             status=IngestionStatus.COMPLETED,
             total_files=3,
-            total_chunks=129,
-            files_indexed=["00-overview.md", "01-architecture.md", "02-request-flows.md"],
             created_at=now,
             completed_at=now,
+        )
+
+    async def list_courses(self) -> List[dict]:
+        try:
+            from rag_service.knowledge_cafe.course_loader import get_course_loader
+            return [c.to_summary_dict() for c in get_course_loader().list_courses()]
+        except Exception:
+            return [{
+                "id": "income-assessment-kt",
+                "title": "Income Assessment — KT",
+                "description": "Learn the architecture, workflows, and integrations for income-assessment-service.",
+                "target_service": "income-assessment-service",
+                "domain": "Banking & Credit Microservices",
+                "target_audience": "New Backend Engineers",
+                "difficulty": "Intermediate",
+                "estimated_duration": "1.5 hours",
+                "icon": "Layers",
+                "tags": ["Spring Boot", "WebFlux", "MongoDB"],
+                "total_lessons": 10,
+            }]
+
+    async def get_course_detail(self, course_id: str) -> Optional[dict]:
+        try:
+            from rag_service.knowledge_cafe.course_loader import get_course_loader
+            c = get_course_loader().get_course(course_id)
+            return c.to_dict() if c else None
+        except Exception:
+            return None
+
+    async def synthesize_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        previous_summary: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> dict:
+        return {
+            "course_id": course_id,
+            "lesson_id": lesson_id,
+            "lesson_index": 0,
+            "title": "Mock Lesson",
+            "summary": "Simulated lesson content for testing",
+            "content": f"## Mock Lesson for {lesson_id}\n\nThis is simulated lesson content.",
+            "takeaways": ["Takeaway 1", "Takeaway 2"],
+            "sources": [{"file": "01-overview.md", "service": "income-assessment-service", "doc_type": "course_context", "snippet": "Overview"}],
+            "latency_ms": 50,
+            "model": model or "mock",
+        }
+
+    async def answer_doubt(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        lesson_content_snippet: str = "",
+        model: Optional[str] = None,
+    ) -> dict:
+        return {
+            "answer": f"Simulated answer for question: '{question}'",
+            "sources": [{"file": "01-overview.md", "service": "income-assessment-service", "doc_type": "course_context", "snippet": "Overview"}],
+            "latency_ms": 40,
+            "model": model or "mock",
+        }
+
+    async def get_course_document(
+        self,
+        course_id: str,
+        file_path: str,
+    ) -> DocumentView:
+        from rag_service.knowledge_cafe.course_loader import get_course_loader
+        name, content = get_course_loader().read_course_document(course_id, file_path)
+        return DocumentView(
+            file=name,
+            service=course_id,
+            content=content,
+            content_type="text/markdown",
+            total_lines=len(content.splitlines()),
+            size_bytes=len(content.encode("utf-8")),
         )

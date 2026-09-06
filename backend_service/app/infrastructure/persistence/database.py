@@ -86,10 +86,51 @@ class Database:
                     completed_at TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS kt_course_enrollments (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    course_id TEXT NOT NULL,
+                    current_lesson_index INTEGER DEFAULT 0,
+                    completed_lessons_json TEXT DEFAULT '[]',
+                    overall_progress INTEGER DEFAULT 0,
+                    is_completed BOOLEAN DEFAULT 0,
+                    knowledge_check_results_json TEXT DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(user_id, course_id),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS kt_cached_lessons (
+                    id TEXT PRIMARY KEY,
+                    course_id TEXT NOT NULL,
+                    lesson_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    sources_json TEXT NOT NULL,
+                    takeaways_json TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(course_id, lesson_id, model)
+                );
+
+                CREATE TABLE IF NOT EXISTS kt_lesson_doubts (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    course_id TEXT NOT NULL,
+                    lesson_id TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    sources_json TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
                 CREATE INDEX IF NOT EXISTS idx_conversations_service ON conversations(service);
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
                 CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback(message_id);
+                CREATE INDEX IF NOT EXISTS idx_kt_enrollments_user ON kt_course_enrollments(user_id);
+                CREATE INDEX IF NOT EXISTS idx_kt_doubts_lesson ON kt_lesson_doubts(course_id, lesson_id);
             """)
 
             # Ensure user_id, share_token, and forked_from columns exist if table was created in an earlier schema version

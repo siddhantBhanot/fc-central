@@ -7,10 +7,12 @@ import {
   Database,
   GitBranch,
   GitMerge,
+  GraduationCap,
   History,
   Layers,
   Loader2,
   LogOut,
+  MessageSquare,
   RotateCcw,
   Sparkles,
   CheckCircle2,
@@ -25,6 +27,8 @@ import { FeedbackControls } from '@/components/chat/FeedbackControls';
 import { IngestionModal } from '@/components/chat/IngestionModal';
 import { ConversationHistoryDrawer } from '@/components/chat/ConversationHistoryDrawer';
 import { ShareModal } from '@/components/chat/ShareModal';
+import { DocumentViewerModal } from '@/components/chat/DocumentViewerModal';
+import { KnowledgeCafeView } from '@/components/kt/KnowledgeCafeView';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import apiClient, { ApiError } from '@/lib/api/client';
@@ -114,6 +118,12 @@ function DashboardApp() {
   } | null>(null);
   const [forkNotification, setForkNotification] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<{ message: string; requestId?: string } | null>(null);
+  const [activeMode, setActiveMode] = useState<'chat' | 'knowledge-cafe'>('chat');
+  const [activeSourceModal, setActiveSourceModal] = useState<{
+    isOpen: boolean;
+    file: string;
+    service: string;
+  }>({ isOpen: false, file: '', service: 'income-assessment-service' });
 
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -397,28 +407,58 @@ function DashboardApp() {
             </span>
           </button>
 
-          {/* Center: Live Backend Status Badge */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-medium">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                backendHealth === 'healthy'
-                  ? 'bg-emerald-500 animate-pulse'
-                  : backendHealth === 'degraded'
-                  ? 'bg-amber-500'
-                  : 'bg-rose-500'
+          {/* Center Mode Switcher: Dev Chat vs Knowledge Cafe */}
+          <div className="flex items-center bg-slate-100/90 p-1 rounded-full border border-slate-200/80 shadow-2xs">
+            <button
+              onClick={() => setActiveMode('chat')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                activeMode === 'chat'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
-            />
-            <span className="text-slate-600">
-              {backendHealth === 'healthy'
-                ? 'Backend Online · Groq & Qdrant'
-                : backendHealth === 'degraded'
-                ? 'Backend Degraded'
-                : 'Backend Offline (port 8000)'}
-            </span>
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Dev Chat</span>
+            </button>
+            <button
+              onClick={() => setActiveMode('knowledge-cafe')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                activeMode === 'knowledge-cafe'
+                  ? 'bg-[#f05a28] text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>Knowledge Cafe</span>
+              <span
+                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                  activeMode === 'knowledge-cafe'
+                    ? 'bg-white/25 text-white'
+                    : 'bg-orange-100 text-[#f05a28]'
+                }`}
+              >
+                KT
+              </span>
+            </button>
           </div>
 
-          {/* Right Actions: Knowledge Ingest, History, New Chat */}
+          {/* Right Actions: Health, Knowledge Ingest, History, New Chat */}
           <div className="flex items-center gap-2">
+            {/* Live Backend Status Badge */}
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-medium">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  backendHealth === 'healthy'
+                    ? 'bg-emerald-500 animate-pulse'
+                    : backendHealth === 'degraded'
+                    ? 'bg-amber-500'
+                    : 'bg-rose-500'
+                }`}
+              />
+              <span className="text-slate-600">
+                {backendHealth === 'healthy' ? 'Online' : 'Offline'}
+              </span>
+            </div>
             {/* Knowledge Ingestion Modal Trigger */}
             <button
               onClick={() => setIsIngestionModalOpen(true)}
@@ -514,8 +554,24 @@ function DashboardApp() {
           </div>
         )}
 
-        {/* Dynamic Body: Home Screen vs Active Chat */}
-        {!isChatActive ? (
+        {/* Dynamic Body: Knowledge Cafe vs Chat / Home Screen */}
+        {activeMode === 'knowledge-cafe' ? (
+          <KnowledgeCafeView
+            selectedModel={selectedModel}
+            onViewSource={(file, service) => {
+              setActiveSourceModal({
+                isOpen: true,
+                file,
+                service: service || selectedService,
+              });
+            }}
+            onExploreInChat={(targetService) => {
+              setSelectedService(targetService);
+              setActiveMode('chat');
+              handleResetHome();
+            }}
+          />
+        ) : !isChatActive ? (
           /* =========================================================================
              1. HOME SCREEN
              ========================================================================= */
@@ -920,6 +976,22 @@ function DashboardApp() {
         shareToken={shareToken}
         isLoading={isSharingLoading}
       />
+
+      {/* Course Context Document Viewer Modal */}
+      {activeSourceModal.isOpen && (
+        <DocumentViewerModal
+          isOpen={activeSourceModal.isOpen}
+          onClose={() =>
+            setActiveSourceModal({
+              isOpen: false,
+              file: '',
+              service: 'income-assessment-service',
+            })
+          }
+          file={activeSourceModal.file}
+          service={activeSourceModal.service}
+        />
+      )}
     </div>
   );
 }

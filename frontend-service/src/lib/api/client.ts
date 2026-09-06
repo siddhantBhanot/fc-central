@@ -3,11 +3,18 @@ import type {
   AuthResponse,
   ConversationDetailResponse,
   ConversationSummary,
+  CompleteLessonResult,
+  CourseDetail,
+  CourseSummary,
   DocumentDetailResponse,
+  EnrollResult,
   FeedbackRequest,
   FeedbackResponse,
   HealthResponse,
+  KnowledgeCheckResult,
   KnowledgeIngestResponse,
+  LessonDetail,
+  LessonDoubt,
   LoginRequest,
   Microservice,
   ModelsResponse,
@@ -260,6 +267,9 @@ export class ApiClient {
   /**
    * Logout user and clear local token
    */
+  /**
+   * Logout user and clear local token
+   */
   async logout(): Promise<void> {
     try {
       if (this.token) {
@@ -270,6 +280,100 @@ export class ApiClient {
     } finally {
       this.setToken(null);
     }
+  }
+
+  // ==========================================
+  // Knowledge Cafe E-Learning & KT APIs
+  // ==========================================
+
+  /**
+   * List all creator-defined courses with active user enrollment progress
+   */
+  async listCourses(): Promise<CourseSummary[]> {
+    return this.fetch<CourseSummary[]>('/api/v1/kt/courses');
+  }
+
+  /**
+   * Retrieve full course curriculum and lesson sequence from course-structure.md
+   */
+  async getCourse(courseId: string): Promise<CourseDetail> {
+    return this.fetch<CourseDetail>(`/api/v1/kt/courses/${encodeURIComponent(courseId)}`);
+  }
+
+  /**
+   * Enroll in or resume an existing course session
+   */
+  async enrollInCourse(courseId: string): Promise<EnrollResult> {
+    return this.fetch<EnrollResult>(`/api/v1/kt/courses/${encodeURIComponent(courseId)}/enroll`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Retrieve or synthesize a lesson using its dedicated context files
+   */
+  async getLesson(courseId: string, lessonId: string, model?: string): Promise<LessonDetail> {
+    const params = new URLSearchParams();
+    if (model) params.append('model', model);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return this.fetch<LessonDetail>(
+      `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}${qs}`
+    );
+  }
+
+  /**
+   * Mark a lesson complete and unlock the next lesson in the curriculum
+   */
+  async completeLesson(courseId: string, lessonId: string): Promise<CompleteLessonResult> {
+    return this.fetch<CompleteLessonResult>(
+      `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}/complete`,
+      { method: 'POST' }
+    );
+  }
+
+  /**
+   * Ask an in-lesson question grounded in dedicated course context
+   */
+  async askLessonDoubt(
+    courseId: string,
+    lessonId: string,
+    question: string,
+    model?: string
+  ): Promise<LessonDoubt> {
+    return this.fetch<LessonDoubt>(
+      `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}/doubts`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ question, model: model || null }),
+      }
+    );
+  }
+
+  /**
+   * Submit an answer to an interactive knowledge check
+   */
+  async submitKnowledgeCheck(
+    courseId: string,
+    lessonId: string,
+    selectedOptionIndex: number
+  ): Promise<KnowledgeCheckResult> {
+    return this.fetch<KnowledgeCheckResult>(
+      `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}/check`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ selected_option_index: selectedOptionIndex }),
+      }
+    );
+  }
+
+  /**
+   * Retrieve full course context document for 'View Source'
+   */
+  async getCourseDocument(courseId: string, file: string): Promise<DocumentDetailResponse> {
+    const params = new URLSearchParams({ file });
+    return this.fetch<DocumentDetailResponse>(
+      `/api/v1/kt/courses/${encodeURIComponent(courseId)}/documents?${params.toString()}`
+    );
   }
 }
 

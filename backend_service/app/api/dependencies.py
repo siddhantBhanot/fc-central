@@ -134,3 +134,30 @@ def get_knowledge_service() -> KnowledgeService:
     return KnowledgeService(
         rag_client=get_rag_client(),
     )
+
+
+@lru_cache
+def get_kt_repository():
+    from backend_service.app.infrastructure.persistence.sqlite_kt_repo import SQLiteKTRepository
+    return SQLiteKTRepository(db=get_db_instance())
+
+
+def get_kt_service():
+    from backend_service.app.application.services.kt_service import KTService
+    return KTService(
+        kt_repo=get_kt_repository(),
+        rag_client=get_rag_client(),
+    )
+
+
+async def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_security),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> Optional[User]:
+    """Optionally extract authenticated user if token present, or return None."""
+    if not credentials or not credentials.credentials:
+        return None
+    try:
+        return await auth_service.get_user_from_token(credentials.credentials)
+    except Exception:
+        return None

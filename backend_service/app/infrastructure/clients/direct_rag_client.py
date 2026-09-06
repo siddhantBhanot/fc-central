@@ -30,6 +30,7 @@ class DirectRAGClient(RAGClientProtocol):
     def __init__(self):
         self._pipeline = None
         self._ingestion = None
+        self._kt_engine = None
         self._init_rag()
 
     def _init_rag(self) -> None:
@@ -85,9 +86,16 @@ class DirectRAGClient(RAGClientProtocol):
                 embedding_provider=embedding_provider,
                 default_service=settings.default_microservice,
             )
+
+            from rag_service.knowledge_cafe.kt_engine import KTEngine
+            self._kt_engine = KTEngine(
+                llm_provider=llm_provider,
+                prompt_loader=prompt_loader,
+            )
         except Exception as e:
             self._pipeline = None
             self._ingestion = None
+            self._kt_engine = None
 
     async def list_models(self) -> List[dict]:
         """Discover available LLM models strictly based on active server configuration."""
@@ -324,3 +332,92 @@ class DirectRAGClient(RAGClientProtocol):
             job.error_message = str(e)
             job.completed_at = datetime.now(timezone.utc)
             return job
+
+    async def list_courses(self) -> List[dict]:
+        if self._kt_engine is None:
+            self._init_rag()
+        if self._kt_engine is None:
+            return []
+        return self._kt_engine.list_courses()
+
+    async def get_course_detail(self, course_id: str) -> Optional[dict]:
+        if self._kt_engine is None:
+            self._init_rag()
+        if self._kt_engine is None:
+            return None
+        return self._kt_engine.get_course_detail(course_id)
+
+    async def synthesize_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        previous_summary: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> dict:
+        if self._kt_engine is None:
+            self._init_rag()
+        if self._kt_engine is None:
+            raise RAGServiceException("Knowledge Cafe engine could not be initialized.")
+        try:
+            return await self._kt_engine.synthesize_lesson(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                previous_summary=previous_summary,
+                model=model,
+            )
+        except ValueError as ve:
+            from backend_service.app.domain.exceptions.base import EntityNotFoundException
+            raise EntityNotFoundException(entity_name="Course/Lesson", entity_id=f"{course_id}/{lesson_id}") from ve
+        except Exception as e:
+            raise RAGServiceException(f"Error synthesizing lesson: {e}") from e
+
+    async def answer_doubt(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        lesson_content_snippet: str = "",
+        model: Optional[str] = None,
+    ) -> dict:
+        if self._kt_engine is None:
+            self._init_rag()
+        if self._kt_engine is None:
+            raise RAGServiceException("Knowledge Cafe engine could not be initialized.")
+        try:
+            return await self._kt_engine.answer_doubt(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                question=question,
+                lesson_content_snippet=lesson_content_snippet,
+                model=model,
+            )
+        except Exception as e:
+            raise RAGServiceException(f"Error answering lesson doubt: {e}") from e
+
+    async def get_course_document(
+        self,
+        course_id: str,
+        file_path: str,
+    ) -> DocumentView:
+        if self._kt_engine is None:
+            self._init_rag()
+        if self._kt_engine is None:
+            raise RAGServiceException("Knowledge Cafe engine could not be initialized.")
+        try:
+            name, content = self._kt_engine.read_document(course_id, file_path)
+            total_lines = len(content.splitlines())
+            size_bytes = len(content.encode("utf-8"))
+            return DocumentView(
+                file=name,
+                service=course_id,
+                content=content,
+                content_type="text/markdown",
+                total_lines=total_lines,
+                size_bytes=size_bytes,
+            )
+        except FileNotFoundError as fe:
+            from backend_service.app.domain.exceptions.base import EntityNotFoundException
+            raise EntityNotFoundException(entity_name="CourseDocument", entity_id=file_path) from fe
+        except PermissionError as pe:
+            from backend_service.app.domain.exceptions.base import ForbiddenException
+            raise ForbiddenException(str(pe)) from pe

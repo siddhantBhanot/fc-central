@@ -47,3 +47,40 @@ class RAGClientProtocol(Protocol):
     ) -> DocumentView:
         """Safely retrieve full document content with path traversal and format protections."""
         ...
+
+    async def list_courses(self) -> List[dict]:
+        """List all available Knowledge Cafe courses."""
+        ...
+
+    async def get_course_detail(self, course_id: str) -> Optional[dict]:
+        """Get full details of a course including creator-defined lessons and context metadata."""
+        ...
+
+    async def synthesize_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        previous_summary: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> dict:
+        """Synthesize a complete pedagogical lesson grounded in dedicated lesson context files."""
+        ...
+
+    async def answer_doubt(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        lesson_content_snippet: str = "",
+        model: Optional[str] = None,
+    ) -> dict:
+        """Answer an in-lesson question grounded in the lesson context files."""
+        ...
+
+    async def get_course_document(
+        self,
+        course_id: str,
+        file_path: str,
+    ) -> DocumentView:
+        """Safely retrieve full content of a course context document for View Source."""
+        ...
