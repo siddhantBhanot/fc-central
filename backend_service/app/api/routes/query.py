@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 
 from backend_service.app.api.dependencies import get_current_user, get_query_service
 from backend_service.app.api.schemas.query import (
@@ -39,6 +40,37 @@ async def execute_query(
         model=payload.model,
     )
     return QueryResponse(**result)
+
+
+@router.post("/query/stream")
+async def execute_query_stream(
+    payload: QueryRequest,
+    current_user: User = Depends(get_current_user),
+    query_service: QueryService = Depends(get_query_service),
+) -> StreamingResponse:
+    """
+    Execute streaming natural language query via Server-Sent Events (SSE).
+    Yields initial metadata (sources, model, IDs), incremental text chunks, and final metrics.
+    """
+    generator = query_service.execute_query_stream(
+        query_text=payload.query,
+        conversation_id=payload.conversation_id,
+        service=payload.service,
+        top_k=payload.top_k,
+        user_id=current_user.id,
+        share_token=payload.share_token,
+        model=payload.model,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 
 @router.post("/conversations/{conversation_id}/share", response_model=ShareConversationResponse)

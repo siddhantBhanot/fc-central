@@ -231,49 +231,102 @@ function DashboardApp() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const assistantTempId = `assistant-${Date.now()}`;
+    const initialAssistantMsg: ChatMessage = {
+      id: assistantTempId,
+      conversationId: currentConversationId || undefined,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'streaming',
+      model: selectedModel || undefined,
+    };
+
+    setMessages((prev) => [...prev, userMessage, initialAssistantMsg]);
     setIsChatActive(true);
     setQueryInput('');
     setIsLoading(true);
 
     try {
-      const response = await apiClient.query({
-        query: text,
-        conversation_id: currentConversationId,
-        share_token: activeSharedToken || undefined,
-        service: selectedService,
-        model: selectedModel || undefined,
-        top_k: 5,
-      });
+      await apiClient.queryStream(
+        {
+          query: text,
+          conversation_id: currentConversationId,
+          share_token: activeSharedToken || undefined,
+          service: selectedService,
+          model: selectedModel || undefined,
+          top_k: 5,
+        },
+        {
+          onMetadata: (meta) => {
+            setIsLoading(false);
+            if (meta.forked) {
+              setCurrentConversationId(meta.conversation_id);
+              setActiveSharedToken(null);
+              setSharedInfo(null);
+              setShareToken(null);
+              if (typeof window !== 'undefined') {
+                window.history.replaceState({}, document.title, window.location.pathname);
+              }
+              setForkNotification('Conversation branched! You are now continuing on your own personal fork.');
+              setTimeout(() => setForkNotification(null), 6000);
+            } else if (meta.conversation_id) {
+              setCurrentConversationId(meta.conversation_id);
+            }
 
-      if (response.forked) {
-        setCurrentConversationId(response.conversation_id);
-        setActiveSharedToken(null);
-        setSharedInfo(null);
-        setShareToken(null);
-        if (typeof window !== 'undefined') {
-          window.history.replaceState({}, document.title, window.location.pathname);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantTempId
+                  ? {
+                      ...msg,
+                      id: meta.message_id || msg.id,
+                      conversationId: meta.conversation_id,
+                      sources: meta.sources,
+                      provider: meta.provider,
+                      model: meta.model,
+                    }
+                  : msg
+              )
+            );
+          },
+          onChunk: (chunk) => {
+            setIsLoading(false);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantTempId || msg.status === 'streaming'
+                  ? { ...msg, content: msg.content + chunk }
+                  : msg
+              )
+            );
+          },
+          onDone: (done) => {
+            setIsLoading(false);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantTempId || msg.status === 'streaming'
+                  ? {
+                      ...msg,
+                      id: done.message_id || msg.id,
+                      status: 'complete',
+                      latencyMs: done.latency_ms,
+                    }
+                  : msg
+              )
+            );
+          },
+          onError: (err) => {
+            setIsLoading(false);
+            setErrorMessage({ message: err });
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantTempId || msg.status === 'streaming'
+                  ? { ...msg, status: 'error' }
+                  : msg
+              )
+            );
+          },
         }
-        setForkNotification('Conversation branched! You are now continuing on your own personal fork.');
-        setTimeout(() => setForkNotification(null), 6000);
-      } else {
-        setCurrentConversationId(response.conversation_id);
-      }
-
-      const assistantMessage: ChatMessage = {
-        id: response.message_id,
-        conversationId: response.conversation_id,
-        role: 'assistant',
-        content: response.answer,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: 'complete',
-        sources: response.sources,
-        latencyMs: response.latency_ms,
-        provider: response.provider,
-        model: response.model,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+      );
     } catch (err: any) {
       console.error('Query error:', err);
       let errorDesc = 'Failed to get response from engineering intelligence service.';
@@ -799,14 +852,32 @@ function DashboardApp() {
                               Developer Assistant
                             </span>
                           </div>
-                          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3 text-[#00b074]" />
-                            <span>Verified Grounded</span>
-                          </div>
+                          {msg.status === 'streaming' ? (
+                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-orange-700 bg-orange-50 px-2.5 py-0.5 rounded-full border border-orange-200 animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-[#f05a28]" />
+                              <span>Streaming Live</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-[#00b074]" />
+                              <span>Verified Grounded</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Markdown & Kotlin syntax highlighter */}
-                        <MarkdownRenderer content={msg.content} />
+                        <div className="relative">
+                          {msg.content ? (
+                            <MarkdownRenderer content={msg.content} />
+                          ) : (
+                            <div className="py-2 text-xs text-slate-400 italic animate-pulse">
+                              Synthesizing answer from verified documentation...
+                            </div>
+                          )}
+                          {msg.status === 'streaming' && msg.content && (
+                            <span className="inline-block w-1.5 h-3.5 ml-1 bg-[#f05a28] animate-pulse align-middle" />
+                          )}
+                        </div>
 
                         {/* Citations if available */}
                         {msg.sources && msg.sources.length > 0 && (
@@ -814,7 +885,7 @@ function DashboardApp() {
                         )}
 
                         {/* Message Quality Feedback Controls */}
-                        {msg.conversationId && msg.id && (
+                        {msg.conversationId && msg.id && msg.status === 'complete' && (
                           <FeedbackControls
                             messageId={msg.id}
                             conversationId={msg.conversationId}
@@ -841,8 +912,8 @@ function DashboardApp() {
                 </div>
               ))}
 
-              {/* Generating / Thinking Pulse Indicator */}
-              {isLoading && (
+              {/* Generating / Thinking Pulse Indicator (only before first token arrives) */}
+              {isLoading && !messages.some((m) => m.status === 'streaming' && m.content.length > 0) && (
                 <div className="flex justify-start">
                   <div className="rounded-2xl rounded-tl-xs bg-[#f8fafc] border border-slate-200 px-4 py-3 shadow-xs flex items-center gap-3">
                     <Loader2 className="w-4 h-4 text-[#f05a28] animate-spin" />

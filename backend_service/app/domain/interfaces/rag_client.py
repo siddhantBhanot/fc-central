@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Protocol
+from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, Tuple
 from backend_service.app.domain.models.conversation import Message, SourceCitation
 from backend_service.app.domain.models.knowledge import DocumentView, IngestionJob
 
@@ -26,6 +26,17 @@ class RAGClientProtocol(Protocol):
         model: Optional[str] = None,
     ) -> RAGQueryResult:
         """Execute a grounded RAG query with optional multi-turn conversation history and model override."""
+        ...
+
+    async def stream_query(
+        self,
+        query_text: str,
+        service: str = "income-assessment-service",
+        history: Optional[List[Message]] = None,
+        top_k: int = 5,
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        """Stream chunks from RAG pipeline with upfront source citations and metadata."""
         ...
 
     async def list_models(self) -> List[dict]:
@@ -66,6 +77,16 @@ class RAGClientProtocol(Protocol):
         """Synthesize a complete pedagogical lesson grounded in dedicated lesson context files."""
         ...
 
+    async def stream_synthesize_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        previous_summary: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        """Stream progressive lesson synthesis tokens in real-time."""
+        ...
+
     async def answer_doubt(
         self,
         course_id: str,
@@ -75,6 +96,17 @@ class RAGClientProtocol(Protocol):
         model: Optional[str] = None,
     ) -> dict:
         """Answer an in-lesson question grounded in the lesson context files."""
+        ...
+
+    async def stream_answer_doubt(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        lesson_content_snippet: str = "",
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        """Stream in-lesson doubt answering tokens in real-time."""
         ...
 
     async def get_course_document(

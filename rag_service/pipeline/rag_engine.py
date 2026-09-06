@@ -224,7 +224,7 @@ class RAGPipeline:
         top_k: int = 4,
         temperature: float = 0.1,
         model: Optional[str] = None,
-    ) -> Tuple[AsyncIterator[str], List[SourceReference]]:
+    ) -> Tuple[AsyncIterator[str], List[SourceReference], Dict[str, Any]]:
         """
         Stream RAG response chunks asynchronously with upfront source metadata.
         """
@@ -275,5 +275,13 @@ class RAGPipeline:
             model=model,
         )
 
-        return stream_iter, sources
+        provider_name = getattr(self.llm_provider, "provider_name", "groq" if "groq" in getattr(self.llm_provider, "base_url", "") else "openai")
+        model_name = model or getattr(self.llm_provider, "model_id", "default")
+        meta = {
+            "service": target_service,
+            "provider": provider_name,
+            "model": model_name,
+        }
+
+        return stream_iter, sources, meta
 

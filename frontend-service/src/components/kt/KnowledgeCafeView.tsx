@@ -5,7 +5,7 @@ import { CurriculumSidebar } from './CurriculumSidebar';
 import { LessonViewer } from './LessonViewer';
 import { LessonDoubtDrawer } from './LessonDoubtDrawer';
 import { CourseCompletionModal } from './CourseCompletionModal';
-import type { CourseDetail, CourseSummary, LessonDetail } from '@/types';
+import type { CourseDetail, CourseSummary, LessonDetail, LessonDoubt } from '@/types';
 
 interface KnowledgeCafeViewProps {
   selectedModel: string;
@@ -60,28 +60,71 @@ export function KnowledgeCafeView({
         enrollRes.current_lesson?.id || enrollRes.course.lessons[0]?.id;
 
       if (targetLessonId) {
-        setActiveLessonId(targetLessonId);
-        const lessonRes = await apiClient.getLesson(courseId, targetLessonId, selectedModel);
-        setActiveLesson(lessonRes);
+        await handleSelectLesson(targetLessonId, courseId);
       }
     } catch (e) {
       console.error('Error starting course:', e);
-    } finally {
       setIsLoadingLesson(false);
     }
   };
 
-  // Handle Lesson Switching
-  const handleSelectLesson = async (lessonId: string) => {
-    if (!activeCourseId) return;
+  // Handle Lesson Switching with Real-Time Streaming
+  const handleSelectLesson = async (lessonId: string, overrideCourseId?: string) => {
+    const courseId = overrideCourseId || activeCourseId;
+    if (!courseId) return;
+
     setActiveLessonId(lessonId);
     setIsLoadingLesson(true);
+
     try {
-      const lessonRes = await apiClient.getLesson(activeCourseId, lessonId, selectedModel);
-      setActiveLesson(lessonRes);
+      await apiClient.getLessonContentStream(
+        courseId,
+        lessonId,
+        selectedModel,
+        {
+          onMetadata: (meta) => {
+            setActiveLesson({
+              course_id: meta.course_id,
+              lesson_id: meta.lesson_id,
+              lesson_index: meta.lesson_index,
+              title: meta.title,
+              summary: meta.summary,
+              content: '',
+              takeaways: meta.takeaways || [],
+              sources: meta.sources || [],
+              knowledge_check: meta.knowledge_check,
+              doubts: meta.doubts || [],
+              is_completed: meta.is_completed,
+              model: meta.model,
+            });
+            if (meta.is_cached) {
+              setIsLoadingLesson(false);
+            }
+          },
+          onChunk: (chunk) => {
+            setIsLoadingLesson(false);
+            setActiveLesson((prev) => (prev ? { ...prev, content: prev.content + chunk } : prev));
+          },
+          onDone: (done) => {
+            setIsLoadingLesson(false);
+            setActiveLesson((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    content: done.clean_content || prev.content,
+                    takeaways: done.takeaways || prev.takeaways,
+                  }
+                : prev
+            );
+          },
+          onError: (err) => {
+            setIsLoadingLesson(false);
+            console.error('Lesson stream error:', err);
+          },
+        }
+      );
     } catch (e) {
-      console.error('Error fetching lesson:', e);
-    } finally {
+      console.error('Error fetching lesson stream:', e);
       setIsLoadingLesson(false);
     }
   };
@@ -123,29 +166,88 @@ export function KnowledgeCafeView({
     }
   };
 
-  // Handle In-Lesson Doubt
+  // Handle In-Lesson Doubt with Real-Time Streaming
   const handleAskDoubt = async (question: string) => {
     if (!activeCourseId || !activeLessonId) return;
     setIsAskingDoubt(true);
+    const tempDoubtId = `doubt-${Date.now()}`;
+    const pendingDoubt: LessonDoubt = {
+      id: tempDoubtId,
+      user_id: '',
+      course_id: activeCourseId,
+      lesson_id: activeLessonId,
+      question: question,
+      answer: '',
+      sources: [],
+      created_at: new Date().toISOString(),
+    };
+
+    if (activeLesson) {
+      setActiveLesson({
+        ...activeLesson,
+        doubts: [...activeLesson.doubts, pendingDoubt],
+      });
+    }
+
     try {
-      const doubt = await apiClient.askLessonDoubt(
+      await apiClient.askLessonDoubtStream(
         activeCourseId,
         activeLessonId,
         question,
-        selectedModel
+        selectedModel,
+        {
+          onMetadata: (meta) => {
+            setActiveLesson((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                doubts: prev.doubts.map((d) =>
+                  d.id === tempDoubtId
+                    ? { ...d, id: meta.doubt_id || d.id, sources: meta.sources || [] }
+                    : d
+                ),
+              };
+            });
+          },
+          onChunk: (chunk) => {
+            setActiveLesson((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                doubts: prev.doubts.map((d) =>
+                  d.id === tempDoubtId || (d.id.startsWith('doubt-') && !d.answer)
+                    ? { ...d, answer: d.answer + chunk }
+                    : d
+                ),
+              };
+            });
+          },
+          onDone: (done) => {
+            setIsAskingDoubt(false);
+            setActiveLesson((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                doubts: prev.doubts.map((d) =>
+                  d.id === tempDoubtId || d.id === done.doubt.id
+                    ? done.doubt
+                    : d
+                ),
+              };
+            });
+          },
+          onError: (err) => {
+            setIsAskingDoubt(false);
+            console.error('Doubt stream error:', err);
+          },
+        }
       );
-      if (activeLesson) {
-        setActiveLesson({
-          ...activeLesson,
-          doubts: [...activeLesson.doubts, doubt],
-        });
-      }
     } catch (e) {
-      console.error('Error asking doubt:', e);
-    } finally {
+      console.error('Error asking doubt stream:', e);
       setIsAskingDoubt(false);
     }
   };
+
 
   // Handle Knowledge Check Submission
   const handleSubmitCheck = async (selectedOptionIndex: number) => {

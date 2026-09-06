@@ -94,6 +94,12 @@ export function LessonViewer({
           </div>
 
           <div className="flex items-center gap-2">
+            {isLoading && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-orange-50 text-orange-700 border border-orange-200 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#f05a28]" />
+                Streaming Live
+              </span>
+            )}
             {lesson.model && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200/80">
                 <Cpu className="w-3 h-3 text-slate-400" />
@@ -112,9 +118,13 @@ export function LessonViewer({
       </div>
 
       {/* Main Markdown Lesson Content */}
-      <div className="bg-white text-slate-900 leading-relaxed font-sans text-sm md:text-base">
+      <div className="bg-white text-slate-900 leading-relaxed font-sans text-sm md:text-base relative">
         <MarkdownRenderer content={lesson.content} />
+        {isLoading && lesson.content && (
+          <span className="inline-block w-2 h-4 ml-1 bg-[#f05a28] animate-pulse align-middle" />
+        )}
       </div>
+
 
       {/* Key Takeaways Card */}
       {lesson.takeaways && lesson.takeaways.length > 0 && (

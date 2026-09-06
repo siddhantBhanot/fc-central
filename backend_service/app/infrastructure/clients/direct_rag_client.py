@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import time
-from typing import List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 import uuid
 
 # Ensure project root is in sys.path
@@ -96,6 +96,14 @@ class DirectRAGClient(RAGClientProtocol):
             self._pipeline = None
             self._ingestion = None
             self._kt_engine = None
+
+    def _ensure_initialized(self):
+        if self._pipeline is None or self._kt_engine is None:
+            self._init_rag()
+        if self._pipeline is None:
+            raise RAGServiceException(
+                "RAG pipeline could not be initialized. Please check rag_service dependencies and configuration."
+            )
 
     async def list_models(self) -> List[dict]:
         """Discover available LLM models strictly based on active server configuration."""
@@ -270,6 +278,64 @@ class DirectRAGClient(RAGClientProtocol):
         except Exception as e:
             raise RAGServiceException(f"Error querying RAG pipeline: {e}", details={"error": str(e)}) from e
 
+    async def stream_query(
+        self,
+        query_text: str,
+        service: str = "income-assessment-service",
+        history: Optional[List[Message]] = None,
+        top_k: int = 5,
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        """Stream chunks from RAG pipeline with upfront source citations and metadata."""
+        self._ensure_initialized()
+
+        if model:
+            available_models = await self.list_models()
+            valid_ids = {m["id"] for m in available_models}
+            if model not in valid_ids:
+                from backend_service.app.domain.exceptions.base import ValidationException
+                raise ValidationException(
+                    f"Model '{model}' is not available or configured. Available models: {', '.join(sorted(valid_ids))}"
+                )
+
+        try:
+            from rag_service.domain.models import Message as RAGMessage
+            rag_history = []
+            if history:
+                for m in history:
+                    rag_history.append(RAGMessage(role=m.role.value, content=m.content))
+
+            stream_iter, sources, meta = await self._pipeline.stream_query(
+                query_text=query_text,
+                service=service,
+                chat_history=rag_history if rag_history else None,
+                top_k=top_k,
+                model=model,
+            )
+
+            citations = []
+            for src in sources:
+                doc_type_val = getattr(src, "document_type", getattr(src, "doc_type", "markdown"))
+                snippet_val = getattr(src, "snippet", getattr(src, "content_snippet", None))
+                citations.append(
+                    SourceCitation(
+                        file=src.file,
+                        service=getattr(src, "service", None) or service,
+                        class_name=src.class_name,
+                        endpoint=src.endpoint,
+                        start_line=src.start_line,
+                        end_line=src.end_line,
+                        doc_type=doc_type_val.value if hasattr(doc_type_val, "value") else str(doc_type_val),
+                        snippet=snippet_val,
+                    )
+                )
+
+            return stream_iter, citations, meta
+        except DomainException:
+            raise
+        except Exception as e:
+            raise RAGServiceException(f"Error in streaming RAG pipeline: {e}", details={"error": str(e)}) from e
+
     async def get_document(
         self,
         service: str,
@@ -371,6 +437,37 @@ class DirectRAGClient(RAGClientProtocol):
         except Exception as e:
             raise RAGServiceException(f"Error synthesizing lesson: {e}") from e
 
+    async def stream_synthesize_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        previous_summary: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        if self._kt_engine is None:
+            self._init_rag()
+        if self._kt_engine is None:
+            raise RAGServiceException("Knowledge Cafe engine could not be initialized.")
+        try:
+            stream_iter, raw_sources, meta = await self._kt_engine.stream_synthesize_lesson(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                previous_summary=previous_summary,
+                model=model,
+            )
+            citations = [
+                SourceCitation(
+                    file=s.get("file", ""),
+                    service=s.get("service"),
+                    doc_type=s.get("doc_type", "course_context"),
+                    snippet=s.get("snippet"),
+                )
+                for s in raw_sources
+            ]
+            return stream_iter, citations, meta
+        except Exception as e:
+            raise RAGServiceException(f"Error in stream synthesizing lesson: {e}") from e
+
     async def answer_doubt(
         self,
         course_id: str,
@@ -393,6 +490,39 @@ class DirectRAGClient(RAGClientProtocol):
             )
         except Exception as e:
             raise RAGServiceException(f"Error answering lesson doubt: {e}") from e
+
+    async def stream_answer_doubt(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        lesson_content_snippet: str = "",
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        if self._kt_engine is None:
+            self._init_rag()
+        if self._kt_engine is None:
+            raise RAGServiceException("Knowledge Cafe engine could not be initialized.")
+        try:
+            stream_iter, raw_sources, meta = await self._kt_engine.stream_answer_doubt(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                question=question,
+                lesson_content_snippet=lesson_content_snippet,
+                model=model,
+            )
+            citations = [
+                SourceCitation(
+                    file=s.get("file", ""),
+                    service=s.get("service"),
+                    doc_type=s.get("doc_type", "course_context"),
+                    snippet=s.get("snippet"),
+                )
+                for s in raw_sources
+            ]
+            return stream_iter, citations, meta
+        except Exception as e:
+            raise RAGServiceException(f"Error in streaming answer doubt: {e}") from e
 
     async def get_course_document(
         self,

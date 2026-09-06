@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 import uuid
 
 from backend_service.app.domain.interfaces.rag_client import RAGClientProtocol, RAGQueryResult
@@ -90,6 +90,26 @@ class MockRAGClient(RAGClientProtocol):
             model=model or "mock-gpt-oss",
         )
 
+    async def stream_query(
+        self,
+        query_text: str,
+        service: str = "income-assessment-service",
+        history: Optional[List[Message]] = None,
+        top_k: int = 5,
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        async def _gen():
+            chunks = ["### Assessment Analysis for ", f"`{service}`\n\n", "1. **Query Evaluated**: ", f"\"{query_text}\"\n\n", "2. **Orchestration**: Spring Boot reactive processing.\n"]
+            for c in chunks:
+                await asyncio.sleep(0.01)
+                yield c
+
+        sources = [
+            SourceCitation(file="00-overview.md", service=service, doc_type="markdown", snippet="Overview of income assessment"),
+        ]
+        meta = {"service": service, "provider": "mock", "model": model or "mock-gpt-oss"}
+        return _gen(), sources, meta
+
     async def get_document(
         self,
         service: str,
@@ -178,6 +198,22 @@ class MockRAGClient(RAGClientProtocol):
             "model": model or "mock",
         }
 
+    async def stream_synthesize_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        previous_summary: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        async def _gen():
+            chunks = [f"## Mock Lesson for {lesson_id}\n\n", "This is simulated ", "streaming lesson content.\n"]
+            for c in chunks:
+                await asyncio.sleep(0.01)
+                yield c
+        sources = [SourceCitation(file="01-overview.md", service=course_id, doc_type="course_context", snippet="Overview")]
+        meta = {"course_id": course_id, "lesson_id": lesson_id, "model": model or "mock"}
+        return _gen(), sources, meta
+
     async def answer_doubt(
         self,
         course_id: str,
@@ -192,6 +228,23 @@ class MockRAGClient(RAGClientProtocol):
             "latency_ms": 40,
             "model": model or "mock",
         }
+
+    async def stream_answer_doubt(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        lesson_content_snippet: str = "",
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[SourceCitation], Dict[str, Any]]:
+        async def _gen():
+            chunks = ["Simulated answer ", "for question: ", f"'{question}'"]
+            for c in chunks:
+                await asyncio.sleep(0.01)
+                yield c
+        sources = [SourceCitation(file="01-overview.md", service=course_id, doc_type="course_context", snippet="Overview")]
+        meta = {"course_id": course_id, "lesson_id": lesson_id, "model": model or "mock"}
+        return _gen(), sources, meta
 
     async def get_course_document(
         self,

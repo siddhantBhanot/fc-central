@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 
 from backend_service.app.api.dependencies import (
     get_current_user,
@@ -84,6 +85,34 @@ async def get_lesson(
     return LessonDetailResponse(**res)
 
 
+@router.get("/courses/{course_id}/lessons/{lesson_id}/stream")
+async def get_lesson_stream(
+    course_id: str,
+    lesson_id: str,
+    model: Optional[str] = Query(None, description="Optional LLM model override"),
+    current_user: User = Depends(get_current_user),
+    kt_service: KTService = Depends(get_kt_service),
+) -> StreamingResponse:
+    """
+    Stream progressive lesson synthesis tokens via SSE.
+    """
+    generator = kt_service.get_lesson_content_stream(
+        course_id=course_id,
+        lesson_id=lesson_id,
+        user_id=current_user.id,
+        model=model,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/courses/{course_id}/lessons/{lesson_id}/complete", response_model=CompleteLessonResponse)
 async def complete_lesson(
     course_id: str,
@@ -121,6 +150,35 @@ async def ask_doubt(
         model=payload.model,
     )
     return DoubtResponse(**res)
+
+
+@router.post("/courses/{course_id}/lessons/{lesson_id}/doubts/stream")
+async def ask_doubt_stream(
+    course_id: str,
+    lesson_id: str,
+    payload: DoubtRequest,
+    current_user: User = Depends(get_current_user),
+    kt_service: KTService = Depends(get_kt_service),
+) -> StreamingResponse:
+    """
+    Ask a question during a lesson with real-time SSE token streaming.
+    """
+    generator = kt_service.ask_doubt_stream(
+        course_id=course_id,
+        lesson_id=lesson_id,
+        question=payload.question,
+        user_id=current_user.id,
+        model=payload.model,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/courses/{course_id}/lessons/{lesson_id}/check", response_model=KnowledgeCheckSubmitResponse)

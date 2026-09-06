@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
+import json
 import logging
-from typing import Any, Dict, List, Optional
+import re
+import time
+from typing import Any, AsyncIterator, Dict, List, Optional
+import uuid
 
 from backend_service.app.domain.exceptions.base import EntityNotFoundException, ValidationException
 from backend_service.app.domain.interfaces.kt_repo import IKTRepository
@@ -178,6 +182,145 @@ class KTService:
             "model": effective_model,
         }
 
+    async def get_lesson_content_stream(
+        self,
+        course_id: str,
+        lesson_id: str,
+        user_id: str,
+        model: Optional[str] = None,
+    ) -> AsyncIterator[str]:
+        """
+        Stream progressive lesson synthesis tokens in real-time.
+        If the lesson is already cached, emits cached content directly.
+        """
+        course = await self.rag_client.get_course_detail(course_id)
+        if not course:
+            raise EntityNotFoundException(entity_name="Course", entity_id=course_id)
+
+        lesson = None
+        for l in course.get("lessons", []):
+            if l["id"] == lesson_id:
+                lesson = l
+                break
+
+        if not lesson:
+            raise EntityNotFoundException(entity_name="Lesson", entity_id=lesson_id)
+
+        effective_model = model or "default"
+        cached = await self.kt_repo.get_cached_lesson(course_id, lesson_id, effective_model)
+
+        doubts = await self.kt_repo.list_lesson_doubts(course_id, lesson_id, user_id=user_id)
+        enrollment = await self.kt_repo.get_enrollment(user_id, course_id)
+        is_completed = lesson_id in (enrollment.completed_lessons if enrollment else [])
+
+        if cached:
+            # Already synthesized & cached in SQLite
+            meta_payload = {
+                "type": "metadata",
+                "course_id": course_id,
+                "lesson_id": lesson_id,
+                "lesson_index": lesson["lesson_index"],
+                "title": lesson["title"],
+                "summary": lesson["summary"],
+                "takeaways": cached.takeaways,
+                "sources": [s.to_dict() for s in cached.sources],
+                "knowledge_check": lesson.get("knowledge_check"),
+                "doubts": [d.to_dict() for d in doubts],
+                "is_completed": is_completed,
+                "model": effective_model,
+                "is_cached": True,
+            }
+            yield f"data: {json.dumps(meta_payload)}\n\n"
+            yield f"data: {json.dumps({'type': 'chunk', 'text': cached.content})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'takeaways': cached.takeaways, 'clean_content': cached.content, 'latency_ms': 0, 'complete': True})}\n\n"
+            return
+
+        # Not cached yet: synthesize with live token streaming
+        start_time = time.perf_counter()
+        prev_lessons = [l for l in course.get("lessons", []) if l["lesson_index"] < lesson["lesson_index"]]
+        if prev_lessons:
+            prev_summary = "Earlier lessons covered: " + "; ".join(
+                [f"Lesson {pl['lesson_index']+1} ({pl['title']}): {pl['summary']}" for pl in prev_lessons[-3:]]
+            )
+        else:
+            prev_summary = "This is the first lesson of the course."
+
+        try:
+            stream_iter, sources, meta = await self.rag_client.stream_synthesize_lesson(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                previous_summary=prev_summary,
+                model=model,
+            )
+
+            meta_payload = {
+                "type": "metadata",
+                "course_id": course_id,
+                "lesson_id": lesson_id,
+                "lesson_index": lesson["lesson_index"],
+                "title": lesson["title"],
+                "summary": lesson["summary"],
+                "sources": [s.to_dict() for s in sources],
+                "knowledge_check": lesson.get("knowledge_check"),
+                "doubts": [d.to_dict() for d in doubts],
+                "is_completed": is_completed,
+                "model": effective_model,
+                "is_cached": False,
+            }
+            yield f"data: {json.dumps(meta_payload)}\n\n"
+
+            raw_chunks = []
+            async for chunk in stream_iter:
+                if chunk:
+                    raw_chunks.append(chunk)
+                    yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+
+            raw_content = "".join(raw_chunks)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+
+            # Parse takeaways block
+            clean_content = raw_content
+            takeaways = []
+            takeaway_match = re.search(r"```takeaways\s*([\s\S]*?)\s*```", raw_content, re.IGNORECASE)
+            if takeaway_match:
+                lines = takeaway_match.group(1).strip().splitlines()
+                for line in lines:
+                    clean_line = line.strip().lstrip("-*•").strip()
+                    if clean_line:
+                        takeaways.append(clean_line)
+                clean_content = raw_content[:takeaway_match.start()].rstrip() + "\n\n" + raw_content[takeaway_match.end():].lstrip()
+
+            if not takeaways:
+                takeaways = [
+                    f"Mastered core principles of {lesson['title']}",
+                    f"Understood integration points and domain boundaries",
+                    f"Reviewed verified implementation patterns and error-handling paths",
+                ]
+
+            # Save synthesized lesson to SQLite cache
+            new_cache = CachedLesson(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                model=effective_model,
+                content=clean_content.strip(),
+                sources=sources,
+                takeaways=takeaways,
+            )
+            await self.kt_repo.save_cached_lesson(new_cache)
+
+            done_payload = {
+                "type": "done",
+                "takeaways": takeaways,
+                "clean_content": clean_content.strip(),
+                "latency_ms": round(latency_ms, 2),
+                "complete": True,
+            }
+            yield f"data: {json.dumps(done_payload)}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+
     async def complete_lesson(
         self,
         course_id: str,
@@ -264,6 +407,79 @@ class KTService:
         )
         saved_doubt = await self.kt_repo.add_doubt(doubt)
         return saved_doubt.to_dict()
+
+    async def ask_doubt_stream(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        user_id: str,
+        model: Optional[str] = None,
+    ) -> AsyncIterator[str]:
+        """
+        Stream tokens for in-lesson doubt answering in real-time.
+        Yields standard SSE events and persists the completed doubt to SQLite.
+        """
+        if not question or not question.strip():
+            raise ValidationException("Question text cannot be empty.")
+
+        cached = await self.kt_repo.get_cached_lesson(course_id, lesson_id, model or "default")
+        snippet = cached.content[:1500] if cached else ""
+
+        start_time = time.perf_counter()
+        try:
+            stream_iter, sources, meta = await self.rag_client.stream_answer_doubt(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                question=question.strip(),
+                lesson_content_snippet=snippet,
+                model=model,
+            )
+
+            doubt_id = str(uuid.uuid4())
+            # 1. Emit metadata
+            meta_payload = {
+                "type": "metadata",
+                "doubt_id": doubt_id,
+                "sources": [s.to_dict() for s in sources],
+                "model": meta.get("model", model or "default"),
+            }
+            yield f"data: {json.dumps(meta_payload)}\n\n"
+
+            # 2. Stream chunks
+            full_chunks = []
+            async for chunk in stream_iter:
+                if chunk:
+                    full_chunks.append(chunk)
+                    yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+
+            # 3. Persist completed doubt
+            full_answer = "".join(full_chunks)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+
+            doubt = LessonDoubt(
+                id=doubt_id,
+                user_id=user_id,
+                course_id=course_id,
+                lesson_id=lesson_id,
+                question=question.strip(),
+                answer=full_answer.strip(),
+                sources=sources,
+            )
+            saved_doubt = await self.kt_repo.add_doubt(doubt)
+
+            # 4. Emit done
+            done_payload = {
+                "type": "done",
+                "doubt": saved_doubt.to_dict(),
+                "latency_ms": round(latency_ms, 2),
+                "complete": True,
+            }
+            yield f"data: {json.dumps(done_payload)}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
 
     async def submit_knowledge_check(
         self,

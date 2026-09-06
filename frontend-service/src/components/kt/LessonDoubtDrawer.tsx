@@ -113,19 +113,22 @@ export function LessonDoubtDrawer({
                   {/* Assistant Answer */}
                   <div className="flex items-start gap-2.5 bg-orange-50/30 p-4 rounded-xl border border-orange-100 text-slate-900 text-xs leading-relaxed">
                     <Sparkles className="w-4 h-4 text-[#f05a28] mt-0.5 shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <MarkdownRenderer content={doubt.answer} />
+                    <div className="flex-1 space-y-2 relative">
+                      {doubt.answer ? (
+                        <MarkdownRenderer content={doubt.answer} />
+                      ) : (
+                        <div className="text-slate-400 italic flex items-center gap-2">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f05a28]" />
+                          <span>Synthesizing answer from course documentation...</span>
+                        </div>
+                      )}
+                      {isAsking && doubt.id.startsWith('doubt-') && doubt.answer && (
+                        <span className="inline-block w-1.5 h-3 ml-1 bg-[#f05a28] animate-pulse align-middle" />
+                      )}
                     </div>
                   </div>
                 </div>
               ))}
-
-              {isAsking && (
-                <div className="flex items-center gap-2 p-4 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 animate-pulse">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f05a28]" />
-                  <span>Principal Engineer is answering your doubt...</span>
-                </div>
-              )}
             </div>
           )}
         </div>

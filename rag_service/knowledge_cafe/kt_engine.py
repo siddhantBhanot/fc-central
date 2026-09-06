@@ -1,7 +1,7 @@
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from rag_service.domain.models import Message, MessageRole
 from rag_service.domain.protocols import LLMProvider
@@ -213,6 +213,148 @@ class KTEngine:
             "latency_ms": latency_ms,
             "model": llm_response.model or model or "default",
         }
+
+    async def stream_synthesize_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        previous_summary: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Stream progressive lesson synthesis tokens in real-time.
+        Returns (stream_iterator, sources, metadata).
+        """
+        course = self.course_loader.get_course(course_id)
+        if not course:
+            raise ValueError(f"Course '{course_id}' not found.")
+
+        lesson = None
+        for l in course.lessons:
+            if l.id == lesson_id:
+                lesson = l
+                break
+
+        if not lesson:
+            raise ValueError(f"Lesson '{lesson_id}' not found in course '{course_id}'.")
+
+        # 1. Read dedicated context files for this lesson
+        file_contents = self.course_loader.read_lesson_context_files(course_id, lesson_id)
+        if not file_contents:
+            context_text = f"Overview: {lesson.summary}"
+            sources = []
+        else:
+            context_blocks = []
+            sources = []
+            for file_name, content in file_contents:
+                context_blocks.append(f"=== File: {file_name} ===\n{content}\n")
+                sources.append({
+                    "file": file_name,
+                    "service": course.target_service,
+                    "doc_type": "course_context",
+                    "snippet": content[:200] + "..." if len(content) > 200 else content,
+                })
+            context_text = "\n---------------------\n".join(context_blocks)
+
+        # 2. Render prompt
+        prev_summary_text = previous_summary or "This is the first lesson of the course."
+        prompt_content = self.prompt_loader.render(
+            "kt_lesson_synthesis",
+            course_title=course.title,
+            domain=course.domain,
+            target_service=course.target_service,
+            lesson_number=lesson.lesson_index + 1,
+            lesson_title=lesson.title,
+            lesson_summary=lesson.summary,
+            previous_context_summary=prev_summary_text,
+            lesson_context=context_text,
+        )
+
+        messages = [Message(role=MessageRole.USER, content=prompt_content)]
+        system_prompt = (
+            f"You are an expert Principal Engineer delivering an authoritative, engaging Knowledge Transfer "
+            f"masterclass on '{course.title}'. Teach with exceptional technical clarity, clean formatting, "
+            f"and strict adherence to the provided course documentation."
+        )
+
+        stream_iter = self.llm_provider.stream(
+            messages=messages,
+            system_prompt=system_prompt,
+            temperature=0.2,
+            model=model,
+        )
+
+        meta = {
+            "course_id": course_id,
+            "lesson_id": lesson_id,
+            "lesson_title": lesson.title,
+            "summary": lesson.summary,
+            "model": model or getattr(self.llm_provider, "model_id", "default"),
+        }
+        return stream_iter, sources, meta
+
+    async def stream_answer_doubt(
+        self,
+        course_id: str,
+        lesson_id: str,
+        question: str,
+        lesson_content_snippet: str = "",
+        model: Optional[str] = None,
+    ) -> Tuple[AsyncIterator[str], List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Stream tokens for in-lesson doubt answering in real-time.
+        Returns (stream_iterator, sources, metadata).
+        """
+        course = self.course_loader.get_course(course_id)
+        if not course:
+            raise ValueError(f"Course '{course_id}' not found.")
+
+        lesson = self.course_loader.get_lesson(course_id, lesson_id)
+        if not lesson:
+            raise ValueError(f"Lesson '{lesson_id}' not found.")
+
+        file_contents = self.course_loader.read_lesson_context_files(course_id, lesson_id)
+        context_blocks = []
+        sources = []
+        for file_name, content in file_contents:
+            context_blocks.append(f"=== File: {file_name} ===\n{content}\n")
+            sources.append({
+                "file": file_name,
+                "service": course.target_service,
+                "doc_type": "course_context",
+                "snippet": content[:200] + "..." if len(content) > 200 else content,
+            })
+        context_text = "\n---------------------\n".join(context_blocks) if context_blocks else lesson.summary
+
+        prompt_content = self.prompt_loader.render(
+            "kt_lesson_doubt",
+            course_title=course.title,
+            lesson_number=lesson.lesson_index + 1,
+            lesson_title=lesson.title,
+            lesson_context=context_text,
+            lesson_content_snippet=lesson_content_snippet[:1500],
+            question=question,
+        )
+
+        messages = [Message(role=MessageRole.USER, content=prompt_content)]
+        system_prompt = (
+            f"You are a Principal Engineer mentoring a developer during a Knowledge Transfer session for "
+            f"'{course.title}'. Answer doubts accurately and concisely using the provided context."
+        )
+
+        stream_iter = self.llm_provider.stream(
+            messages=messages,
+            system_prompt=system_prompt,
+            temperature=0.2,
+            model=model,
+        )
+
+        meta = {
+            "course_id": course_id,
+            "lesson_id": lesson_id,
+            "model": model or getattr(self.llm_provider, "model_id", "default"),
+        }
+        return stream_iter, sources, meta
 
     def read_document(self, course_id: str, file_path: str) -> Tuple[str, str]:
         return self.course_loader.read_course_document(course_id, file_path)

@@ -23,8 +23,71 @@ import type {
   ShareResponse,
   SharedConversationDetailResponse,
   SignupRequest,
+  SourceCitation,
   User,
 } from '@/types';
+
+export interface QueryStreamCallbacks {
+  onMetadata?: (meta: {
+    conversation_id: string;
+    message_id: string;
+    sources: SourceCitation[];
+    service: string;
+    provider: string;
+    model: string;
+    forked?: boolean;
+    forked_from?: string | null;
+  }) => void;
+  onChunk: (chunk: string) => void;
+  onDone?: (done: {
+    latency_ms: number;
+    message_id: string;
+    conversation_id?: string;
+    complete: boolean;
+  }) => void;
+  onError?: (err: string) => void;
+}
+
+export interface DoubtStreamCallbacks {
+  onMetadata?: (meta: {
+    doubt_id: string;
+    sources: SourceCitation[];
+    model: string;
+  }) => void;
+  onChunk: (chunk: string) => void;
+  onDone?: (done: {
+    doubt: LessonDoubt;
+    latency_ms: number;
+    complete: boolean;
+  }) => void;
+  onError?: (err: string) => void;
+}
+
+export interface LessonStreamCallbacks {
+  onMetadata?: (meta: {
+    course_id: string;
+    lesson_id: string;
+    lesson_index: number;
+    title: string;
+    summary: string;
+    takeaways?: string[];
+    sources: SourceCitation[];
+    knowledge_check?: any;
+    doubts: LessonDoubt[];
+    is_completed: boolean;
+    model: string;
+    is_cached: boolean;
+  }) => void;
+  onChunk: (chunk: string) => void;
+  onDone?: (done: {
+    takeaways?: string[];
+    clean_content?: string;
+    latency_ms: number;
+    complete: boolean;
+  }) => void;
+  onError?: (err: string) => void;
+}
+
 
 export class ApiError extends Error {
   code: string;
@@ -131,6 +194,84 @@ export class ApiClient {
     return response.json() as Promise<T>;
   }
 
+  private async streamFetch(
+    endpoint: string,
+    options: RequestInit,
+    onMessage: (data: any) => void
+  ): Promise<void> {
+    const url = this.getApiUrl(endpoint);
+    const headers = new Headers(options.headers || {});
+
+    if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    if (this.token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${this.token}`);
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    const requestId = response.headers.get('X-Request-ID') || undefined;
+
+    if (!response.ok) {
+      try {
+        const errorJson = await response.json();
+        throw new ApiError(
+          response.status,
+          errorJson.message || `Request failed with status ${response.status}`,
+          errorJson.code || 'HTTP_ERROR',
+          errorJson.request_id || requestId,
+          errorJson.details
+        );
+      } catch (e) {
+        if (e instanceof ApiError) throw e;
+        const errorText = await response.text().catch(() => 'Unknown server error');
+        throw new ApiError(response.status, errorText, 'HTTP_ERROR', requestId);
+      }
+    }
+
+    if (!response.body) {
+      throw new Error('ReadableStream not supported in this environment');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          const raw = trimmed.slice(6);
+          try {
+            const parsed = JSON.parse(raw);
+            onMessage(parsed);
+          } catch (e) {
+            console.error('Failed to parse SSE event:', raw, e);
+          }
+        }
+      }
+    }
+
+    if (buffer.trim().startsWith('data: ')) {
+      try {
+        const parsed = JSON.parse(buffer.trim().slice(6));
+        onMessage(parsed);
+      } catch {}
+    }
+  }
+
   /**
    * Health check utility to test connectivity to backend
    */
@@ -139,7 +280,7 @@ export class ApiClient {
   }
 
   /**
-   * Execute an engineering intelligence query against the RAG knowledge base
+   * Execute an engineering intelligence query against the RAG knowledge base (non-streaming fallback)
    */
   async query(payload: QueryRequest): Promise<QueryResponse> {
     return this.fetch<QueryResponse>('/api/v1/query', {
@@ -147,6 +288,31 @@ export class ApiClient {
       body: JSON.stringify(payload),
     });
   }
+
+  /**
+   * Execute streaming engineering intelligence query via Server-Sent Events (SSE)
+   */
+  async queryStream(payload: QueryRequest, callbacks: QueryStreamCallbacks): Promise<void> {
+    await this.streamFetch(
+      '/api/v1/query/stream',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      (event) => {
+        if (event.type === 'metadata' && callbacks.onMetadata) {
+          callbacks.onMetadata(event);
+        } else if (event.type === 'chunk' && callbacks.onChunk) {
+          callbacks.onChunk(event.text);
+        } else if (event.type === 'done' && callbacks.onDone) {
+          callbacks.onDone(event);
+        } else if (event.type === 'error' && callbacks.onError) {
+          callbacks.onError(event.error);
+        }
+      }
+    );
+  }
+
 
   /**
    * Submit developer feedback (positive/negative + comment) on an answer
@@ -310,7 +476,7 @@ export class ApiClient {
   }
 
   /**
-   * Retrieve or synthesize a lesson using its dedicated context files
+   * Retrieve or synthesize a lesson using its dedicated context files (non-streaming fallback)
    */
   async getLesson(courseId: string, lessonId: string, model?: string): Promise<LessonDetail> {
     const params = new URLSearchParams();
@@ -318,6 +484,33 @@ export class ApiClient {
     const qs = params.toString() ? `?${params.toString()}` : '';
     return this.fetch<LessonDetail>(
       `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}${qs}`
+    );
+  }
+
+  /**
+   * Stream progressive lesson synthesis via SSE
+   */
+  async getLessonContentStream(
+    courseId: string,
+    lessonId: string,
+    model: string | undefined,
+    callbacks: LessonStreamCallbacks
+  ): Promise<void> {
+    const qs = model ? `?model=${encodeURIComponent(model)}` : '';
+    await this.streamFetch(
+      `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}/stream${qs}`,
+      { method: 'GET' },
+      (event) => {
+        if (event.type === 'metadata' && callbacks.onMetadata) {
+          callbacks.onMetadata(event);
+        } else if (event.type === 'chunk' && callbacks.onChunk) {
+          callbacks.onChunk(event.text);
+        } else if (event.type === 'done' && callbacks.onDone) {
+          callbacks.onDone(event);
+        } else if (event.type === 'error' && callbacks.onError) {
+          callbacks.onError(event.error);
+        }
+      }
     );
   }
 
@@ -332,7 +525,7 @@ export class ApiClient {
   }
 
   /**
-   * Ask an in-lesson question grounded in dedicated course context
+   * Ask an in-lesson question grounded in dedicated course context (non-streaming fallback)
    */
   async askLessonDoubt(
     courseId: string,
@@ -348,6 +541,37 @@ export class ApiClient {
       }
     );
   }
+
+  /**
+   * Ask in-lesson doubt with real-time SSE streaming
+   */
+  async askLessonDoubtStream(
+    courseId: string,
+    lessonId: string,
+    question: string,
+    model: string | undefined,
+    callbacks: DoubtStreamCallbacks
+  ): Promise<void> {
+    await this.streamFetch(
+      `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}/doubts/stream`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ question, model: model || null }),
+      },
+      (event) => {
+        if (event.type === 'metadata' && callbacks.onMetadata) {
+          callbacks.onMetadata(event);
+        } else if (event.type === 'chunk' && callbacks.onChunk) {
+          callbacks.onChunk(event.text);
+        } else if (event.type === 'done' && callbacks.onDone) {
+          callbacks.onDone(event);
+        } else if (event.type === 'error' && callbacks.onError) {
+          callbacks.onError(event.error);
+        }
+      }
+    );
+  }
+
 
   /**
    * Submit an answer to an interactive knowledge check
