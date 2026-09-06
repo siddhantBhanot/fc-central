@@ -26,6 +26,7 @@ interface LessonViewerProps {
     explanation: string;
   }>;
   isLastLesson: boolean;
+  isSidebarCollapsed?: boolean;
 }
 
 export function LessonViewer({
@@ -36,6 +37,7 @@ export function LessonViewer({
   onViewSource,
   onSubmitCheck,
   isLastLesson,
+  isSidebarCollapsed = false,
 }: LessonViewerProps) {
   // Knowledge Check State
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -77,7 +79,13 @@ export function LessonViewer({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 md:px-12 py-8 max-w-4xl mx-auto w-full space-y-8 animate-in fade-in duration-300">
+    <div
+      className={`flex-1 overflow-y-auto ${
+        isSidebarCollapsed
+          ? 'px-8 sm:px-14 md:px-16 max-w-5xl xl:max-w-6xl'
+          : 'px-6 md:px-12 max-w-4xl'
+      } mx-auto w-full space-y-8 animate-in fade-in duration-300`}
+    >
       {/* Lesson Header */}
       <div className="space-y-2 pb-6 border-b border-slate-100">
         <div className="flex items-center justify-between gap-2 flex-wrap">

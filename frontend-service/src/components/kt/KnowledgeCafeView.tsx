@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import apiClient from '@/lib/api/client';
 import { CourseCatalog } from './CourseCatalog';
 import { CurriculumSidebar } from './CurriculumSidebar';
@@ -23,6 +24,7 @@ export function KnowledgeCafeView({
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [activeCourse, setActiveCourse] = useState<CourseDetail | null>(null);
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [activeLesson, setActiveLesson] = useState<LessonDetail | null>(null);
   const [isLoadingLesson, setIsLoadingLesson] = useState<boolean>(false);
   const [isDoubtDrawerOpen, setIsDoubtDrawerOpen] = useState<boolean>(false);
@@ -286,14 +288,51 @@ export function KnowledgeCafeView({
   const isLastLesson = currentLessonIndex === activeCourse.lessons.length - 1;
 
   return (
-    <div className="flex-1 flex overflow-hidden h-full">
+    <div className="flex-1 flex overflow-hidden h-full relative">
       {/* 10-Lesson Creator Curriculum Sidebar */}
-      <CurriculumSidebar
-        course={activeCourse}
-        activeLessonId={activeLessonId || ''}
-        onSelectLesson={handleSelectLesson}
-        onBackToCatalog={handleBackToCatalog}
-      />
+      <div
+        className={`relative transition-[width,margin] duration-300 ease-in-out shrink-0 h-full flex ${
+          isSidebarOpen ? 'w-80 md:w-88' : 'w-0'
+        }`}
+      >
+        <div className="w-80 md:w-88 h-full overflow-hidden">
+          <CurriculumSidebar
+            course={activeCourse}
+            activeLessonId={activeLessonId || ''}
+            onSelectLesson={handleSelectLesson}
+            onBackToCatalog={handleBackToCatalog}
+          />
+        </div>
+
+        {/* Boundary Collapse Button (when expanded) */}
+        {isSidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(false)}
+            className="absolute -right-3.5 top-5 z-20 w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-[#f05a28] hover:border-orange-300 hover:bg-orange-50 shadow-xs flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+            title="Collapse curriculum sidebar"
+            aria-label="Collapse curriculum sidebar"
+          >
+            <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+          </button>
+        )}
+      </div>
+
+      {/* Boundary Expand Button (when collapsed) */}
+      {!isSidebarOpen && (
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(true)}
+          className="absolute left-0 top-5 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-r-xl bg-white border-y border-r border-slate-200 shadow-sm text-xs font-semibold text-slate-600 hover:text-[#f05a28] hover:bg-orange-50/80 hover:border-orange-300 transition-all cursor-pointer group animate-in fade-in slide-in-from-left duration-200"
+          title="Expand curriculum sidebar"
+          aria-label="Expand curriculum sidebar"
+        >
+          <ChevronRight className="w-4 h-4 text-[#f05a28] stroke-[2.5] group-hover:translate-x-0.5 transition-transform" />
+          <span className="text-[11px] font-semibold text-slate-700 group-hover:text-[#f05a28]">
+            Curriculum
+          </span>
+        </button>
+      )}
 
       {/* Main Lesson Reading Panel */}
       {activeLesson ? (
@@ -305,6 +344,7 @@ export function KnowledgeCafeView({
           onViewSource={onViewSource}
           onSubmitCheck={handleSubmitCheck}
           isLastLesson={isLastLesson}
+          isSidebarCollapsed={!isSidebarOpen}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center text-xs text-slate-400">

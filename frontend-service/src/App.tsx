@@ -436,9 +436,9 @@ function DashboardApp() {
 
   return (
 
-    <div className="min-h-screen bg-[#edf3f8] flex flex-col justify-between p-3 sm:p-5 md:p-8 font-sans antialiased text-slate-800">
+    <div className="min-h-screen bg-[#edf3f8] flex flex-col justify-between px-3 sm:px-5 md:px-8 py-3 sm:py-4 md:py-6 font-sans antialiased text-slate-800">
       {/* Outer White Card matching Freecharge Biz */}
-      <div className="max-w-5xl w-full mx-auto bg-white rounded-[28px] md:rounded-[40px] shadow-sm border border-slate-100 flex flex-col min-h-[92vh] overflow-hidden">
+      <div className="w-full max-w-7xl mx-auto bg-white rounded-[24px] md:rounded-[36px] shadow-sm border border-slate-100 flex flex-col min-h-[92vh] md:min-h-[94vh] overflow-hidden">
         
         {/* Persistent Top Header */}
         <header className="px-6 md:px-10 py-5 flex items-center justify-between border-b border-slate-100 bg-white shrink-0">
