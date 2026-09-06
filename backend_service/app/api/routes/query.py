@@ -36,6 +36,7 @@ async def execute_query(
         top_k=payload.top_k,
         user_id=current_user.id,
         share_token=payload.share_token,
+        model=payload.model,
     )
     return QueryResponse(**result)
 

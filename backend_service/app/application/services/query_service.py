@@ -29,6 +29,7 @@ class QueryService:
         top_k: int = 5,
         user_id: Optional[str] = None,
         share_token: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         cleaned_query = query_text.strip()
         if not cleaned_query:
@@ -111,6 +112,7 @@ class QueryService:
             service=service,
             history=history,
             top_k=top_k,
+            model=model,
         )
 
         # 5. Persist assistant response with verified sources
@@ -174,5 +176,17 @@ class QueryService:
             limit=limit,
             user_id=user_id,
         )
+
+    async def list_models(self) -> Dict[str, Any]:
+        models = await self.rag_client.list_models()
+        default_model = next(
+            (m["id"] for m in models if m.get("is_default")),
+            models[0]["id"] if models else "default",
+        )
+        return {
+            "models": models,
+            "default_model": default_model,
+        }
+
 
 

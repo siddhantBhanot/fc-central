@@ -104,9 +104,10 @@ class LocalSimulatedLLM:
             "   - Returns HTTP 422 if applicant consent is absent."
         )
 
+        target_model = kwargs.get("model") or "local-simulated-engine"
         return LLMResponse(
             content=simulated_answer,
-            model="local-simulated-engine",
+            model=target_model,
             provider="local-offline",
             metadata={"mode": "simulated_local_demo"},
         )

@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Share2,
+  Cpu,
 } from 'lucide-react';
 
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
@@ -27,7 +28,7 @@ import { ShareModal } from '@/components/chat/ShareModal';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import apiClient, { ApiError } from '@/lib/api/client';
-import type { ChatMessage, Microservice } from '@/types';
+import type { ChatMessage, Microservice, ModelInfo } from '@/types';
 
 
 const DEFAULT_SERVICES: Microservice[] = [
@@ -86,6 +87,8 @@ function DashboardApp() {
   const { user, isAuthenticated, isLoading: isAuthLoading, logout } = useAuth();
   const [services, setServices] = useState<Microservice[]>(DEFAULT_SERVICES);
   const [selectedService, setSelectedService] = useState<string>(DEFAULT_SERVICES[0].id);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const [queryInput, setQueryInput] = useState<string>('');
   const [isChatActive, setIsChatActive] = useState<boolean>(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -124,7 +127,7 @@ function DashboardApp() {
     }
   }, [messages, isChatActive, isLoading]);
 
-  // Initial health check & service discovery
+  // Initial health check, service discovery & model loading
   useEffect(() => {
     const checkConnection = async () => {
       try {
@@ -141,6 +144,19 @@ function DashboardApp() {
         }
       } catch {
         // Keep default services if fetch fails
+      }
+
+      try {
+        const modelsData = await apiClient.listModels();
+        if (modelsData && modelsData.models && modelsData.models.length > 0) {
+          setModels(modelsData.models);
+          setSelectedModel((prev) => {
+            if (prev && modelsData.models.some((m) => m.id === prev)) return prev;
+            return modelsData.default_model || modelsData.models[0].id;
+          });
+        }
+      } catch {
+        // Keep models if fetch fails
       }
     };
 
@@ -215,6 +231,7 @@ function DashboardApp() {
         conversation_id: currentConversationId,
         share_token: activeSharedToken || undefined,
         service: selectedService,
+        model: selectedModel || undefined,
         top_k: 5,
       });
 
@@ -537,25 +554,50 @@ function DashboardApp() {
 
               {/* Central Input Box Container */}
               <div className="w-full bg-white rounded-2xl border border-slate-200 shadow-xs p-4 mb-8 transition-all focus-within:border-slate-300 focus-within:shadow-md">
-                {/* Top Row: SERVICE CONTEXT + Dropdown */}
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                    SERVICE CONTEXT
-                  </span>
-                  <div className="relative">
-                    <select
-                      value={selectedService}
-                      onChange={(e) => setSelectedService(e.target.value)}
-                      className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
-                    >
-                      {services.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-2 pointer-events-none" />
+                {/* Top Row: Context Selectors (SERVICE + MODEL) */}
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                      SERVICE
+                    </span>
+                    <div className="relative">
+                      <select
+                        value={selectedService}
+                        onChange={(e) => setSelectedService(e.target.value)}
+                        className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
+                      >
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-2 pointer-events-none" />
+                    </div>
                   </div>
+
+                  {models.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase flex items-center gap-1">
+                        <Cpu className="w-3 h-3 text-[#f05a28]" />
+                        MODEL
+                      </span>
+                      <div className="relative">
+                        <select
+                          value={selectedModel}
+                          onChange={(e) => setSelectedModel(e.target.value)}
+                          className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
+                        >
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} {m.is_default ? '(Default)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-2 pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Middle Row: Text Input */}
@@ -741,7 +783,10 @@ function DashboardApp() {
                               <Activity className="w-3 h-3 text-emerald-500" />
                               <span>Latency: {msg.latencyMs.toFixed(0)} ms</span>
                             </span>
-                            <span>Model: {msg.model || 'gpt-oss-120b'}</span>
+                            <span className="flex items-center gap-1" title={`Inference Model: ${msg.model || 'gpt-oss-120b'}`}>
+                              <Cpu className="w-3 h-3 text-slate-400" />
+                              <span>Model: {msg.model || 'gpt-oss-120b'}</span>
+                            </span>
                           </div>
                         )}
                       </div>
@@ -768,25 +813,50 @@ function DashboardApp() {
             {/* Shifted Bottom Input Box */}
             <div className="max-w-3xl mx-auto w-full pt-2">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 focus-within:border-slate-300 focus-within:shadow-md transition-all">
-                {/* Top Row: SERVICE CONTEXT + Dropdown */}
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                    SERVICE CONTEXT
-                  </span>
-                  <div className="relative">
-                    <select
-                      value={selectedService}
-                      onChange={(e) => setSelectedService(e.target.value)}
-                      className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
-                    >
-                      {services.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-2 pointer-events-none" />
+                {/* Top Row: Context Selectors (SERVICE + MODEL) */}
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                      SERVICE
+                    </span>
+                    <div className="relative">
+                      <select
+                        value={selectedService}
+                        onChange={(e) => setSelectedService(e.target.value)}
+                        className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
+                      >
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-2 pointer-events-none" />
+                    </div>
                   </div>
+
+                  {models.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase flex items-center gap-1">
+                        <Cpu className="w-3 h-3 text-[#f05a28]" />
+                        MODEL
+                      </span>
+                      <div className="relative">
+                        <select
+                          value={selectedModel}
+                          onChange={(e) => setSelectedModel(e.target.value)}
+                          className="appearance-none bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold pl-2.5 pr-6 py-1 rounded-lg border border-slate-200/60 focus:outline-none cursor-pointer"
+                        >
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} {m.is_default ? '(Default)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-2 pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Middle Row: Text Input */}

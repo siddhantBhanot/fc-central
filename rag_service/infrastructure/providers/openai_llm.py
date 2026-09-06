@@ -24,11 +24,13 @@ class OpenAiClientProvider:
         system_prompt: Optional[str] = None,
         temperature: float = 0.1,
         max_tokens: int = 2048,
+        model: Optional[str] = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """
         Generate response using OpenAI-compatible chat completions API.
         """
+        target_model = model or kwargs.pop("model", None) or self.model_id
         try:
             from openai import AsyncOpenAI
 
@@ -42,7 +44,7 @@ class OpenAiClientProvider:
                 formatted_messages.append({"role": m.role.value, "content": m.content})
 
             response = await client.chat.completions.create(
-                model=self.model_id,
+                model=target_model,
                 messages=formatted_messages,  # type: ignore
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -50,10 +52,11 @@ class OpenAiClientProvider:
             )
 
             choice = response.choices[0]
+            provider_name = "groq" if "groq.com" in (self.base_url or "") else "openai-compatible"
             return LLMResponse(
                 content=choice.message.content or "",
-                model=self.model_id,
-                provider="openai-compatible",
+                model=target_model,
+                provider=provider_name,
                 metadata={"finish_reason": choice.finish_reason},
                 total_tokens=response.usage.total_tokens if response.usage else None,
             )
@@ -66,9 +69,11 @@ class OpenAiClientProvider:
         system_prompt: Optional[str] = None,
         temperature: float = 0.1,
         max_tokens: int = 2048,
+        model: Optional[str] = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream chunks using AsyncOpenAI completions."""
+        target_model = model or kwargs.pop("model", None) or self.model_id
         try:
             from openai import AsyncOpenAI
 
@@ -82,7 +87,7 @@ class OpenAiClientProvider:
                 formatted_messages.append({"role": m.role.value, "content": m.content})
 
             stream_res = await client.chat.completions.create(
-                model=self.model_id,
+                model=target_model,
                 messages=formatted_messages,  # type: ignore
                 temperature=temperature,
                 max_tokens=max_tokens,

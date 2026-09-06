@@ -25,6 +25,10 @@ class QueryRequest(BaseModel):
         default="income-assessment-service",
         description="Target microservice identifier",
     )
+    model: Optional[str] = Field(
+        default=None,
+        description="Optional LLM model override for runtime inference",
+    )
     top_k: int = Field(default=5, ge=1, le=20, description="Number of context chunks to retrieve")
 
 

@@ -404,6 +404,42 @@ class TestBackendServiceAPI(unittest.TestCase):
         self.assertEqual(not_found_resp.status_code, 404)
         self.assertEqual(not_found_resp.json()["code"], "ENTITY_NOT_FOUND")
 
+    def test_10_list_models(self):
+        """Test GET /api/v1/models returns available models configured on the backend."""
+        response = self.client.get("/api/v1/models")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("models", data)
+        self.assertIn("default_model", data)
+        self.assertTrue(len(data["models"]) > 0)
+        default_found = any(m["id"] == data["default_model"] for m in data["models"])
+        self.assertTrue(default_found)
+
+    def test_11_query_with_model_override(self):
+        """Test POST /api/v1/query with dynamic model selection generates response using chosen model."""
+        # 1. Login user
+        login_resp = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": "alice@freecharge.com", "password": "securepassword123"},
+        )
+        self.assertEqual(login_resp.status_code, 200)
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 2. Query with model="mock-llama-3"
+        query_resp = self.client.post(
+            "/api/v1/query",
+            json={
+                "query": "How does income assessment work?",
+                "service": "income-assessment-service",
+                "model": "mock-llama-3",
+            },
+            headers=headers,
+        )
+        self.assertEqual(query_resp.status_code, 200)
+        data = query_resp.json()
+        self.assertEqual(data["model"], "mock-llama-3")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -10,6 +10,7 @@ import type {
   KnowledgeIngestResponse,
   LoginRequest,
   Microservice,
+  ModelsResponse,
   QueryRequest,
   QueryResponse,
   ShareResponse,
@@ -196,6 +197,13 @@ export class ApiClient {
    */
   async listServices(): Promise<Microservice[]> {
     return this.fetch<Microservice[]>('/api/v1/services');
+  }
+
+  /**
+   * List configured LLM models available on the backend
+   */
+  async listModels(): Promise<ModelsResponse> {
+    return this.fetch<ModelsResponse>('/api/v1/models');
   }
 
   /**

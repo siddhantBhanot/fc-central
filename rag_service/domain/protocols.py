@@ -17,9 +17,10 @@ class LLMProvider(Protocol):
         system_prompt: Optional[str] = None,
         temperature: float = 0.1,
         max_tokens: int = 2048,
+        model: Optional[str] = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        """Generate a complete text response given messages and prompt."""
+        """Generate a complete text response given messages, prompt, and optional model override."""
         ...
 
     async def stream(
@@ -28,6 +29,7 @@ class LLMProvider(Protocol):
         system_prompt: Optional[str] = None,
         temperature: float = 0.1,
         max_tokens: int = 2048,
+        model: Optional[str] = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream chunks of response text asynchronously."""

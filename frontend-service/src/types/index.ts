@@ -51,6 +51,7 @@ export interface QueryRequest {
   conversation_id?: string | null;
   share_token?: string | null;
   service?: string;
+  model?: string | null;
   top_k?: number;
 }
 
@@ -203,5 +204,18 @@ export interface DocumentDetailResponse {
   content_type: string;
   total_lines: number;
   size_bytes: number;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  description?: string;
+  is_default: boolean;
+}
+
+export interface ModelsResponse {
+  models: ModelInfo[];
+  default_model: string;
 }
 

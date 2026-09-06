@@ -43,12 +43,14 @@ class BedrockLLMProvider:
         system_prompt: Optional[str] = None,
         temperature: float = 0.1,
         max_tokens: int = 2048,
+        model: Optional[str] = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """
         Generate text response through AWS Bedrock.
         """
-        if self._llm is not None:
+        target_model = model or kwargs.pop("model", None) or self.model_id
+        if self._llm is not None and target_model == self.model_id:
             try:
                 from llama_index.core.base.llms.types import ChatMessage as LlamaChatMessage, MessageRole as LlamaRole
 
@@ -63,7 +65,7 @@ class BedrockLLMProvider:
                 response = await self._llm.achat(llama_messages)
                 return LLMResponse(
                     content=response.message.content or "",
-                    model=self.model_id,
+                    model=target_model,
                     provider="bedrock",
                     metadata=response.raw if isinstance(response.raw, dict) else {},
                 )
@@ -72,7 +74,7 @@ class BedrockLLMProvider:
                 raise RuntimeError(f"Bedrock generation failed: {e}") from e
 
         # Fallback implementation using boto3 bedrock-runtime directly
-        return await self._boto3_fallback_generate(messages, system_prompt, temperature, max_tokens)
+        return await self._boto3_fallback_generate(messages, system_prompt, temperature, max_tokens, target_model)
 
     async def _boto3_fallback_generate(
         self,
@@ -80,6 +82,7 @@ class BedrockLLMProvider:
         system_prompt: Optional[str],
         temperature: float,
         max_tokens: int,
+        model_id: str,
     ) -> LLMResponse:
         try:
             import boto3
@@ -106,7 +109,7 @@ class BedrockLLMProvider:
             response = await loop.run_in_executor(
                 None,
                 lambda: client.invoke_model(
-                    modelId=self.model_id,
+                    modelId=model_id,
                     body=json.dumps(payload),
                     contentType="application/json",
                     accept="application/json",
@@ -116,7 +119,7 @@ class BedrockLLMProvider:
             content = body.get("content", [{}])[0].get("text", "")
             return LLMResponse(
                 content=content,
-                model=self.model_id,
+                model=model_id,
                 provider="bedrock",
                 metadata=body.get("usage", {}),
             )
@@ -129,9 +132,10 @@ class BedrockLLMProvider:
         system_prompt: Optional[str] = None,
         temperature: float = 0.1,
         max_tokens: int = 2048,
+        model: Optional[str] = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream chunks of response text."""
         # For non-streaming fallback, yield full content as single chunk
-        res = await self.generate(messages, system_prompt, temperature, max_tokens, **kwargs)
+        res = await self.generate(messages, system_prompt, temperature, max_tokens, model=model, **kwargs)
         yield res.content

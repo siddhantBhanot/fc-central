@@ -14,12 +14,39 @@ class MockRAGClient(RAGClientProtocol):
     Simulates grounded RAG responses and ingestion jobs without external network calls.
     """
 
+    async def list_models(self) -> List[dict]:
+        """Return simulated models available in mock adapter mode."""
+        return [
+            {
+                "id": "mock-gpt-oss",
+                "name": "Mock GPT-OSS 120B",
+                "provider": "mock",
+                "description": "Simulated open-weight reasoning model for local testing",
+                "is_default": True,
+            },
+            {
+                "id": "mock-llama-3",
+                "name": "Mock Llama 3.3 70B",
+                "provider": "mock",
+                "description": "Simulated Meta model for testing",
+                "is_default": False,
+            },
+            {
+                "id": "mock-claude-3",
+                "name": "Mock Claude 3.5 Sonnet",
+                "provider": "mock",
+                "description": "Simulated Bedrock Claude model for testing",
+                "is_default": False,
+            },
+        ]
+
     async def query(
         self,
         query_text: str,
         service: str = "income-assessment-service",
         history: Optional[List[Message]] = None,
         top_k: int = 5,
+        model: Optional[str] = None,
     ) -> RAGQueryResult:
         await asyncio.sleep(0.05)  # Simulate brief processing latency
 
@@ -60,7 +87,7 @@ class MockRAGClient(RAGClientProtocol):
             service=service,
             latency_ms=52.4,
             provider="mock-local",
-            model="mock-gpt-oss",
+            model=model or "mock-gpt-oss",
         )
 
     async def get_document(

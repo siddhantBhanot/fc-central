@@ -11,7 +11,11 @@ _project_root = Path(__file__).resolve().parents[4]
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from backend_service.app.domain.exceptions.base import RAGServiceException
+from backend_service.app.domain.exceptions.base import (
+    DomainException,
+    RAGServiceException,
+    ValidationException,
+)
 from backend_service.app.domain.interfaces.rag_client import RAGClientProtocol, RAGQueryResult
 from backend_service.app.domain.models.conversation import Message, SourceCitation
 from backend_service.app.domain.models.knowledge import DocumentView, IngestionJob, IngestionStatus
@@ -85,12 +89,114 @@ class DirectRAGClient(RAGClientProtocol):
             self._pipeline = None
             self._ingestion = None
 
+    async def list_models(self) -> List[dict]:
+        """Discover available LLM models strictly based on active server configuration."""
+        from rag_service.infrastructure.config import get_settings
+        settings = get_settings()
+
+        has_groq = bool(settings.groq_api_key)
+        has_openai = bool(settings.openai_api_key)
+        has_aws = bool(settings.aws_access_key_id and settings.aws_secret_access_key)
+
+        default_model = settings.openai_model_id if (has_groq or has_openai) else settings.bedrock_llm_model_id
+
+        if has_groq or (has_openai and "groq" in (settings.openai_base_url or "").lower()):
+            return [
+                {
+                    "id": "openai/gpt-oss-120b",
+                    "name": "GPT-OSS 120B",
+                    "provider": "groq",
+                    "description": "High-capacity open-weight reasoning model via Groq",
+                    "is_default": default_model == "openai/gpt-oss-120b",
+                },
+                {
+                    "id": "openai/gpt-oss-20b",
+                    "name": "GPT-OSS 20B",
+                    "provider": "groq",
+                    "description": "Fast low-latency open-weight reasoning model",
+                    "is_default": default_model == "openai/gpt-oss-20b",
+                },
+                {
+                    "id": "qwen/qwen3.8-27b",
+                    "name": "Qwen 3.8 27B",
+                    "provider": "groq",
+                    "description": "Advanced multilingual reasoning model",
+                    "is_default": default_model == "qwen/qwen3.8-27b",
+                },
+                {
+                    "id": "qwen/qwen3.6-27b",
+                    "name": "Qwen 3.6 27B",
+                    "provider": "groq",
+                    "description": "High-speed analytical reasoning model",
+                    "is_default": default_model == "qwen/qwen3.6-27b",
+                },
+                {
+                    "id": "groq/compound",
+                    "name": "Groq Compound",
+                    "provider": "groq",
+                    "description": "Groq optimized multi-turn reasoning engine",
+                    "is_default": default_model == "groq/compound",
+                },
+                {
+                    "id": "groq/compound-mini",
+                    "name": "Groq Compound Mini",
+                    "provider": "groq",
+                    "description": "Ultra-fast low-latency inference engine",
+                    "is_default": default_model == "groq/compound-mini",
+                },
+            ]
+        elif has_openai:
+            return [
+                {
+                    "id": "gpt-4o",
+                    "name": "GPT-4o",
+                    "provider": "openai",
+                    "description": "OpenAI flagship omni-model",
+                    "is_default": default_model == "gpt-4o",
+                },
+                {
+                    "id": "gpt-4o-mini",
+                    "name": "GPT-4o Mini",
+                    "provider": "openai",
+                    "description": "Fast and efficient OpenAI model",
+                    "is_default": default_model == "gpt-4o-mini",
+                },
+            ]
+        elif has_aws:
+            return [
+                {
+                    "id": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+                    "name": "Claude 3.5 Sonnet",
+                    "provider": "bedrock",
+                    "description": "High-intelligence AWS Bedrock Claude model",
+                    "is_default": default_model == "anthropic.claude-3-5-sonnet-20240620-v1:0",
+                },
+                {
+                    "id": "anthropic.claude-3-haiku-20240307-v1:0",
+                    "name": "Claude 3 Haiku",
+                    "provider": "bedrock",
+                    "description": "Fast and lightweight AWS Bedrock model",
+                    "is_default": default_model == "anthropic.claude-3-haiku-20240307-v1:0",
+                },
+            ]
+        else:
+            return [
+                {
+                    "id": "local-simulated-engine",
+                    "name": "Local Simulated LLM",
+                    "provider": "local",
+                    "description": "Simulated local offline inference",
+                    "is_default": True,
+                }
+            ]
+
     async def query(
         self,
         query_text: str,
         service: str = "income-assessment-service",
         history: Optional[List[Message]] = None,
         top_k: int = 5,
+        model: Optional[str] = None,
     ) -> RAGQueryResult:
         if self._pipeline is None:
             self._init_rag()
@@ -98,6 +204,16 @@ class DirectRAGClient(RAGClientProtocol):
             raise RAGServiceException(
                 "RAG pipeline could not be initialized. Please check rag_service dependencies and configuration."
             )
+
+        # Validate requested model if explicitly provided
+        if model:
+            available = await self.list_models()
+            valid_ids = {m["id"] for m in available}
+            if model not in valid_ids:
+                from backend_service.app.domain.exceptions.base import ValidationException
+                raise ValidationException(
+                    f"Model '{model}' is not available or configured. Available models: {', '.join(sorted(valid_ids))}"
+                )
 
         try:
             # Map conversation history to RAG Message models
@@ -112,6 +228,7 @@ class DirectRAGClient(RAGClientProtocol):
                 service=service,
                 chat_history=rag_history if rag_history else None,
                 top_k=top_k,
+                model=model,
             )
 
             # Map source references back to domain SourceCitation
@@ -140,6 +257,8 @@ class DirectRAGClient(RAGClientProtocol):
                 provider=result.provider,
                 model=result.model,
             )
+        except DomainException:
+            raise
         except Exception as e:
             raise RAGServiceException(f"Error querying RAG pipeline: {e}", details={"error": str(e)}) from e
 

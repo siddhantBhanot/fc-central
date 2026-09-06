@@ -145,9 +145,10 @@ class RAGPipeline:
         chat_history: Optional[List[Message]] = None,
         top_k: int = 4,
         temperature: float = 0.1,
+        model: Optional[str] = None,
     ) -> QueryResult:
         """
-        Execute full RAG query workflow.
+        Execute full RAG query workflow with optional model selection.
         """
         start_time = time.perf_counter()
         target_service = service or self.default_service
@@ -200,6 +201,7 @@ class RAGPipeline:
             messages=messages,
             system_prompt=system_prompt,
             temperature=temperature,
+            model=model,
         )
 
         latency_ms = (time.perf_counter() - start_time) * 1000
@@ -221,6 +223,7 @@ class RAGPipeline:
         chat_history: Optional[List[Message]] = None,
         top_k: int = 4,
         temperature: float = 0.1,
+        model: Optional[str] = None,
     ) -> Tuple[AsyncIterator[str], List[SourceReference]]:
         """
         Stream RAG response chunks asynchronously with upfront source metadata.
@@ -269,6 +272,7 @@ class RAGPipeline:
             messages=messages,
             system_prompt=system_prompt,
             temperature=temperature,
+            model=model,
         )
 
         return stream_iter, sources

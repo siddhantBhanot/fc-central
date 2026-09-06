@@ -23,8 +23,13 @@ class RAGClientProtocol(Protocol):
         service: str = "income-assessment-service",
         history: Optional[List[Message]] = None,
         top_k: int = 5,
+        model: Optional[str] = None,
     ) -> RAGQueryResult:
-        """Execute a grounded RAG query with optional multi-turn conversation history."""
+        """Execute a grounded RAG query with optional multi-turn conversation history and model override."""
+        ...
+
+    async def list_models(self) -> List[dict]:
+        """List configured LLM models available for runtime inference."""
         ...
 
     async def trigger_ingestion(
