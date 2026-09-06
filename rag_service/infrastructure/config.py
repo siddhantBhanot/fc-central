@@ -107,6 +107,9 @@ class Settings(BaseSettings):
             )
         )
     )
+    max_history_messages: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_HISTORY_MESSAGES", "6"))
+    )
 
 
 _settings: Optional[Settings] = None

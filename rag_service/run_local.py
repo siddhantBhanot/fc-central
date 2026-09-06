@@ -62,6 +62,24 @@ class LocalSimulatedLLM:
     ) -> LLMResponse:
         user_prompt = messages[-1].content if messages else ""
 
+        # Handle conversational query rewrite prompt in simulated local mode
+        if (system_prompt and "reformulation" in system_prompt.lower()) or "Standalone Retrieval Query" in user_prompt:
+            import re
+            m = re.search(r"Follow-up Question:\s*(.+)", user_prompt)
+            if m:
+                follow_up = m.group(1).strip()
+                return LLMResponse(
+                    content=f"Standalone query for {follow_up}",
+                    model="local-simulated-engine",
+                    provider="local-offline",
+                    metadata={"mode": "simulated_local_rewrite"},
+                )
+            return LLMResponse(
+                content=user_prompt.strip(),
+                model="local-simulated-engine",
+                provider="local-offline",
+            )
+
         # Extract context if present
         context_preview = "Retrieved knowledge verified."
         if "---------------------" in user_prompt:
@@ -206,6 +224,7 @@ async def run(args=None):
         llm_provider=llm_provider,
         prompt_loader=prompt_loader,
         default_service=args.service,
+        max_history_messages=settings.max_history_messages,
     )
 
     test_query = args.query

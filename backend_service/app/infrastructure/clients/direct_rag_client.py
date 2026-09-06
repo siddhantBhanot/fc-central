@@ -73,6 +73,7 @@ class DirectRAGClient(RAGClientProtocol):
                 llm_provider=llm_provider,
                 prompt_loader=prompt_loader,
                 default_service=settings.default_microservice,
+                max_history_messages=settings.max_history_messages,
             )
 
             self._ingestion = IngestionPipeline(

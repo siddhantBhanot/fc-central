@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
@@ -10,6 +11,10 @@ from rag_service.domain.models import (
 )
 from rag_service.domain.protocols import EmbeddingProvider, LLMProvider, VectorStore
 from rag_service.prompts.loader import PromptLoader, get_prompt_loader
+
+logger = logging.getLogger("rag_service.pipeline")
+
+MAX_HISTORY_MESSAGES: int = 6
 
 
 class ContextAssembler:
@@ -74,13 +79,63 @@ class RAGPipeline:
         llm_provider: LLMProvider,
         prompt_loader: Optional[PromptLoader] = None,
         default_service: str = "income-assessment-service",
+        max_history_messages: int = MAX_HISTORY_MESSAGES,
     ) -> None:
         self.vector_store = vector_store
         self.embedding_provider = embedding_provider
         self.llm_provider = llm_provider
         self.prompt_loader = prompt_loader or get_prompt_loader()
         self.default_service = default_service
+        self.max_history_messages = max_history_messages
         self.context_assembler = ContextAssembler()
+
+    async def _generate_standalone_query(
+        self,
+        query_text: str,
+        service: str,
+        chat_history: Optional[List[Message]],
+    ) -> str:
+        """
+        Generate a standalone, search-optimized query from follow-up questions
+        and recent conversation history to resolve pronouns and implicit references.
+        """
+        if not chat_history:
+            return query_text
+
+        recent_history = chat_history[-self.max_history_messages:]
+        history_lines = [f"{m.role.value.capitalize()}: {m.content}" for m in recent_history]
+        formatted_history = "\n".join(history_lines)
+
+        try:
+            rewrite_prompt = self.prompt_loader.render(
+                "query_rewrite",
+                service=service,
+                chat_history=formatted_history,
+                query_str=query_text,
+            )
+            messages = [Message(role=MessageRole.USER, content=rewrite_prompt)]
+            system_prompt = (
+                "You are an expert technical query reformulation assistant. "
+                "Output only the standalone rewritten search query."
+            )
+            response = await self.llm_provider.generate(
+                messages=messages,
+                system_prompt=system_prompt,
+                temperature=0.0,
+            )
+            rewritten = response.content.strip().strip('"\'')
+            if rewritten:
+                logger.debug(
+                    "Rewrote conversational query '%s' -> '%s' for service '%s'",
+                    query_text,
+                    rewritten,
+                    service,
+                )
+                return rewritten
+            return query_text
+        except Exception as e:
+            logger.warning("Query rewrite failed, falling back to raw query: %s", e)
+            return query_text
 
     async def query(
         self,
@@ -96,28 +151,38 @@ class RAGPipeline:
         start_time = time.perf_counter()
         target_service = service or self.default_service
 
-        # 1. Embed query
-        query_vector = await self.embedding_provider.embed_query(query_text)
+        # 1. Generate standalone retrieval query for conversation-aware retrieval
+        retrieval_query = await self._generate_standalone_query(
+            query_text=query_text,
+            service=target_service,
+            chat_history=chat_history,
+        )
 
-        # 2. Retrieve with service-level filtering
+        # 2. Embed standalone query
+        query_vector = await self.embedding_provider.embed_query(retrieval_query)
+
+        # 3. Retrieve with service-level filtering
         retrieved_chunks = await self.vector_store.search(
             query_vector=query_vector,
             limit=top_k,
             service_filter=target_service,
         )
 
-        # 3. Assemble Context & Citations
+        # 4. Assemble Context & Citations
         context_str, sources = self.context_assembler.assemble(retrieved_chunks)
 
-        # 4. Format Conversation History
+        # 5. Format Conversation History using configurable limit
         formatted_history = ""
         if chat_history:
-            history_lines = [f"{m.role.value.capitalize()}: {m.content}" for m in chat_history[-6:]]
+            history_lines = [
+                f"{m.role.value.capitalize()}: {m.content}"
+                for m in chat_history[-self.max_history_messages:]
+            ]
             formatted_history = "\n".join(history_lines)
         else:
             formatted_history = "None"
 
-        # 5. Render Prompts
+        # 6. Render Prompts (preserves original user query for the final answer)
         system_prompt = self.prompt_loader.render("system", service=target_service)
         query_prompt = self.prompt_loader.render(
             "query_answer",
@@ -129,7 +194,7 @@ class RAGPipeline:
 
         messages = [Message(role=MessageRole.USER, content=query_prompt)]
 
-        # 6. LLM Generation
+        # 7. LLM Generation
         llm_response = await self.llm_provider.generate(
             messages=messages,
             system_prompt=system_prompt,
@@ -161,23 +226,32 @@ class RAGPipeline:
         """
         target_service = service or self.default_service
 
-        # 1. Embed and retrieve
-        query_vector = await self.embedding_provider.embed_query(query_text)
+        # 1. Generate standalone retrieval query for conversation-aware retrieval
+        retrieval_query = await self._generate_standalone_query(
+            query_text=query_text,
+            service=target_service,
+            chat_history=chat_history,
+        )
+
+        # 2. Embed standalone query and retrieve with service filtering
+        query_vector = await self.embedding_provider.embed_query(retrieval_query)
         retrieved_chunks = await self.vector_store.search(
             query_vector=query_vector,
             limit=top_k,
             service_filter=target_service,
         )
 
-        # 2. Assemble context & sources
+        # 3. Assemble context & sources
         context_str, sources = self.context_assembler.assemble(retrieved_chunks)
 
+        # 4. Format Conversation History using configurable limit
         formatted_history = "None"
         if chat_history:
             formatted_history = "\n".join(
-                [f"{m.role.value.capitalize()}: {m.content}" for m in chat_history[-6:]]
+                [f"{m.role.value.capitalize()}: {m.content}" for m in chat_history[-self.max_history_messages:]]
             )
 
+        # 5. Render Prompts (preserves original user query for the final answer)
         system_prompt = self.prompt_loader.render("system", service=target_service)
         query_prompt = self.prompt_loader.render(
             "query_answer",
@@ -189,7 +263,7 @@ class RAGPipeline:
 
         messages = [Message(role=MessageRole.USER, content=query_prompt)]
 
-        # 3. Stream from LLM provider
+        # 6. Stream from LLM provider
         stream_iter = self.llm_provider.stream(
             messages=messages,
             system_prompt=system_prompt,
@@ -197,3 +271,4 @@ class RAGPipeline:
         )
 
         return stream_iter, sources
+
