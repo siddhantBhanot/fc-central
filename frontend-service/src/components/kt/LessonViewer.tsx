@@ -80,7 +80,7 @@ export function LessonViewer({
 
   return (
     <div
-      className={`flex-1 overflow-y-auto ${
+      className={`flex-1 overflow-y-auto pt-8 md:pt-10 pb-12 md:pb-16 ${
         isSidebarCollapsed
           ? 'px-8 sm:px-14 md:px-16 max-w-5xl xl:max-w-6xl'
           : 'px-6 md:px-12 max-w-4xl'
@@ -259,7 +259,7 @@ export function LessonViewer({
       )}
 
       {/* Bottom Sticky-style Action Bar */}
-      <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="pt-6 pb-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
         {/* Ask a Question Trigger */}
         <button
           onClick={onOpenDoubtDrawer}
