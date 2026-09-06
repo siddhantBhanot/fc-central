@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { ApiError } from '@/lib/api/client';
+import fcLogo from '@/assets/freecharge-biz-logo.png';
 
 export function AuthScreen() {
   const { login, signup } = useAuth();
@@ -42,25 +43,14 @@ export function AuthScreen() {
       {/* Top Brand Bar */}
       <div className="w-full max-w-5xl mx-auto flex items-center justify-between pt-2 sm:pt-4">
         <div className="flex items-center gap-2.5 text-left">
-          {/* Freecharge Orange Arrow Glyph */}
-          <div className="w-8 h-8 flex items-center justify-center text-[#f05a28] shrink-0">
-            <svg className="w-7 h-7 fill-current" viewBox="0 0 24 24">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-            </svg>
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center">
-              <span className="text-base font-black tracking-tight text-slate-900 uppercase">
-                FREECHARGE
-              </span>
-              <span className="bg-black text-white text-[9px] font-black px-1.5 py-0.5 rounded ml-1 tracking-wider">
-                BIZ
-              </span>
-            </div>
-            <span className="text-[9px] font-semibold text-slate-400 tracking-wider uppercase -mt-0.5">
-              DEVELOPER ASSISTANT
-            </span>
-          </div>
+          <img
+            src={fcLogo}
+            alt="FreeCharge Biz by Axis Bank"
+            className="h-8 md:h-9 w-auto object-contain"
+          />
+          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase hidden sm:inline-block border-l border-slate-200 pl-2.5 self-center py-0.5">
+            DEVELOPER ASSISTANT
+          </span>
         </div>
 
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-200/80 text-[11px] font-medium text-slate-600 shadow-xs">

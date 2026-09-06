@@ -29,6 +29,7 @@ import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import apiClient, { ApiError } from '@/lib/api/client';
 import type { ChatMessage, Microservice, ModelInfo } from '@/types';
+import fcLogo from '@/assets/freecharge-biz-logo.png';
 
 
 const DEFAULT_SERVICES: Microservice[] = [
@@ -386,25 +387,14 @@ function DashboardApp() {
             className="flex items-center gap-2.5 text-left group cursor-pointer focus:outline-none"
             title="Return to Home"
           >
-            {/* Freecharge Orange Arrow Glyph */}
-            <div className="w-7 h-7 flex items-center justify-center text-[#f05a28] shrink-0">
-              <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center">
-                <span className="text-base font-black tracking-tight text-slate-900 uppercase">
-                  FREECHARGE
-                </span>
-                <span className="bg-black text-white text-[9px] font-black px-1.5 py-0.5 rounded ml-1 tracking-wider">
-                  BIZ
-                </span>
-              </div>
-              <span className="text-[9px] font-semibold text-slate-400 tracking-wider uppercase -mt-0.5">
-                DEVELOPER ASSISTANT
-              </span>
-            </div>
+            <img
+              src={fcLogo}
+              alt="FreeCharge Biz by Axis Bank"
+              className="h-8 md:h-9 w-auto object-contain transition-transform group-hover:scale-[1.02]"
+            />
+            <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase hidden sm:inline-block border-l border-slate-200 pl-2.5 self-center py-0.5">
+              DEVELOPER ASSISTANT
+            </span>
           </button>
 
           {/* Center: Live Backend Status Badge */}
