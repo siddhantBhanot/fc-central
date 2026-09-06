@@ -39,6 +39,7 @@ class ContextAssembler:
             # Format source reference
             source = SourceReference(
                 file=file_ref,
+                service=meta.service,
                 document_type=meta.document_type.value,
                 class_name=meta.class_name,
                 method_name=meta.method_name,

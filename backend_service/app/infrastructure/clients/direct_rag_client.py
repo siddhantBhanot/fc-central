@@ -14,7 +14,7 @@ if str(_project_root) not in sys.path:
 from backend_service.app.domain.exceptions.base import RAGServiceException
 from backend_service.app.domain.interfaces.rag_client import RAGClientProtocol, RAGQueryResult
 from backend_service.app.domain.models.conversation import Message, SourceCitation
-from backend_service.app.domain.models.knowledge import IngestionJob, IngestionStatus
+from backend_service.app.domain.models.knowledge import DocumentView, IngestionJob, IngestionStatus
 
 
 class DirectRAGClient(RAGClientProtocol):
@@ -122,6 +122,7 @@ class DirectRAGClient(RAGClientProtocol):
                 citations.append(
                     SourceCitation(
                         file=src.file,
+                        service=getattr(src, "service", None) or result.service,
                         class_name=src.class_name,
                         endpoint=src.endpoint,
                         start_line=src.start_line,
@@ -141,6 +142,26 @@ class DirectRAGClient(RAGClientProtocol):
             )
         except Exception as e:
             raise RAGServiceException(f"Error querying RAG pipeline: {e}", details={"error": str(e)}) from e
+
+    async def get_document(
+        self,
+        service: str,
+        file_path: str,
+    ) -> DocumentView:
+        from rag_service.infrastructure.document_reader import DocumentReader
+        from backend_service.app.domain.models.knowledge import DocumentView
+
+        sample_dir = _project_root / "rag_service" / "sample_data"
+        reader = DocumentReader(data_dir=sample_dir)
+        doc = reader.read_document(service=service, file_path=file_path)
+        return DocumentView(
+            file=doc.file,
+            service=doc.service,
+            content=doc.content,
+            content_type=doc.content_type,
+            total_lines=doc.total_lines,
+            size_bytes=doc.size_bytes,
+        )
 
     async def trigger_ingestion(
         self,

@@ -61,6 +61,7 @@ class Document(BaseModel):
 
 class SourceReference(BaseModel):
     file: str
+    service: Optional[str] = None
     document_type: str = "markdown"
     class_name: Optional[str] = None
     method_name: Optional[str] = None
@@ -69,6 +70,15 @@ class SourceReference(BaseModel):
     end_line: Optional[int] = None
     snippet: Optional[str] = None
     score: Optional[float] = None
+
+
+class DocumentContent(BaseModel):
+    file: str
+    service: str
+    content: str
+    content_type: str = "text/markdown"
+    total_lines: int
+    size_bytes: int
 
 
 class LLMResponse(BaseModel):

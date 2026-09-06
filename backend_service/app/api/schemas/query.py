@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 class SourceCitationSchema(BaseModel):
     file: str = Field(..., description="Source file name or path")
+    service: Optional[str] = Field(default=None, description="Service identifier the source document belongs to")
     class_name: Optional[str] = Field(default=None, description="Extracted class name if code file")
     endpoint: Optional[str] = Field(default=None, description="Extracted REST endpoint if handler")
     start_line: Optional[int] = Field(default=None, description="Starting line number")

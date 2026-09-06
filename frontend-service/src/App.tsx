@@ -722,7 +722,7 @@ function DashboardApp() {
 
                         {/* Citations if available */}
                         {msg.sources && msg.sources.length > 0 && (
-                          <SourceCitationList sources={msg.sources} />
+                          <SourceCitationList sources={msg.sources} service={selectedService} />
                         )}
 
                         {/* Message Quality Feedback Controls */}

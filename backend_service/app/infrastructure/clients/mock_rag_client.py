@@ -5,7 +5,7 @@ import uuid
 
 from backend_service.app.domain.interfaces.rag_client import RAGClientProtocol, RAGQueryResult
 from backend_service.app.domain.models.conversation import Message, SourceCitation
-from backend_service.app.domain.models.knowledge import IngestionJob, IngestionStatus
+from backend_service.app.domain.models.knowledge import DocumentView, IngestionJob, IngestionStatus
 
 
 class MockRAGClient(RAGClientProtocol):
@@ -36,6 +36,7 @@ class MockRAGClient(RAGClientProtocol):
         citations = [
             SourceCitation(
                 file="01-architecture.md",
+                service=service,
                 doc_type="Markdown Documentation",
                 start_line=1,
                 end_line=45,
@@ -43,6 +44,7 @@ class MockRAGClient(RAGClientProtocol):
             ),
             SourceCitation(
                 file="FourWheelerPersonalAssessmentHandler.kt",
+                service=service,
                 class_name="FourWheelerPersonalAssessmentHandler",
                 endpoint="/api/v1/assess",
                 start_line=23,
@@ -59,6 +61,30 @@ class MockRAGClient(RAGClientProtocol):
             latency_ms=52.4,
             provider="mock-local",
             model="mock-gpt-oss",
+        )
+
+    async def get_document(
+        self,
+        service: str,
+        file_path: str,
+    ) -> DocumentView:
+        await asyncio.sleep(0.01)
+        from pathlib import Path
+        _project_root = Path(__file__).resolve().parents[4]
+        sample_dir = _project_root / "rag_service" / "sample_data"
+
+        from rag_service.infrastructure.document_reader import DocumentReader
+        from backend_service.app.domain.models.knowledge import DocumentView
+
+        reader = DocumentReader(data_dir=sample_dir)
+        doc = reader.read_document(service=service, file_path=file_path)
+        return DocumentView(
+            file=doc.file,
+            service=doc.service,
+            content=doc.content,
+            content_type=doc.content_type,
+            total_lines=doc.total_lines,
+            size_bytes=doc.size_bytes,
         )
 
     async def trigger_ingestion(

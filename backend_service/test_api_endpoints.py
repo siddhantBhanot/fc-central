@@ -332,7 +332,80 @@ class TestBackendServiceAPI(unittest.TestCase):
         self.assertIn(bob_forked_cid, bob_cids)
         self.assertNotIn(alice_cid, bob_cids)
 
+    def test_09_document_viewing_and_security_guardrails(self):
+        """Test GET /api/v1/documents security guardrails (auth, traversal, extension whitelist)."""
+        # 1. Unauthenticated request rejected
+        unauth_resp = self.client.get(
+            "/api/v1/documents",
+            params={"service": "income-assessment-service", "file": "00-overview.md"},
+        )
+        self.assertEqual(unauth_resp.status_code, 401)
+
+        # Login to get token
+        login_resp = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": "alice@freecharge.com", "password": "securepassword123"},
+        ).json()
+        headers = {"Authorization": f"Bearer {login_resp['access_token']}"}
+
+        # 2. Valid markdown document viewing
+        valid_resp = self.client.get(
+            "/api/v1/documents",
+            params={"service": "income-assessment-service", "file": "00-overview.md"},
+            headers=headers,
+        )
+        self.assertEqual(valid_resp.status_code, 200)
+        doc_data = valid_resp.json()
+        self.assertEqual(doc_data["file"], "00-overview.md")
+        self.assertEqual(doc_data["service"], "income-assessment-service")
+        self.assertEqual(doc_data["content_type"], "text/markdown")
+        self.assertGreater(doc_data["total_lines"], 0)
+        self.assertGreater(doc_data["size_bytes"], 0)
+        self.assertIn("Income Assessment", doc_data["content"])
+
+        # 2b. Valid markdown document viewing with full absolute path from Qdrant citation
+        abs_doc_resp = self.client.get(
+            "/api/v1/documents",
+            params={
+                "service": "income-assessment-service",
+                "file": "/Users/siddhantbhanot/Developer/fc-central/rag_service/sample_data/income-assessment-service/01-architecture.md",
+            },
+            headers=headers,
+        )
+        self.assertEqual(abs_doc_resp.status_code, 200)
+        abs_doc_data = abs_doc_resp.json()
+        self.assertEqual(abs_doc_data["file"], "01-architecture.md")
+        self.assertIn("Architecture", abs_doc_data["content"])
+
+        # 3. Path traversal blocked with 403 Forbidden
+        traversal_resp = self.client.get(
+            "/api/v1/documents",
+            params={"service": "income-assessment-service", "file": "../../etc/passwd"},
+            headers=headers,
+        )
+        self.assertEqual(traversal_resp.status_code, 403)
+        self.assertEqual(traversal_resp.json()["code"], "FORBIDDEN")
+
+        # 4. Source code file blocked with 403 Forbidden (restricted to docs only)
+        code_resp = self.client.get(
+            "/api/v1/documents",
+            params={"service": "income-assessment-service", "file": "FourWheelerPersonalAssessmentHandler.kt"},
+            headers=headers,
+        )
+        self.assertEqual(code_resp.status_code, 403)
+        self.assertEqual(code_resp.json()["code"], "FORBIDDEN")
+
+        # 5. Non-existent markdown file returns 404
+        not_found_resp = self.client.get(
+            "/api/v1/documents",
+            params={"service": "income-assessment-service", "file": "non_existent_doc.md"},
+            headers=headers,
+        )
+        self.assertEqual(not_found_resp.status_code, 404)
+        self.assertEqual(not_found_resp.json()["code"], "ENTITY_NOT_FOUND")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
 

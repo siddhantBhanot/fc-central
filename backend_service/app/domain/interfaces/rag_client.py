@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Protocol
 from backend_service.app.domain.models.conversation import Message, SourceCitation
-from backend_service.app.domain.models.knowledge import IngestionJob
+from backend_service.app.domain.models.knowledge import DocumentView, IngestionJob
 
 
 @dataclass
@@ -33,4 +33,12 @@ class RAGClientProtocol(Protocol):
         source_directory: Optional[str] = None,
     ) -> IngestionJob:
         """Trigger document chunking, embedding, and vector upsertion for a service."""
+        ...
+
+    async def get_document(
+        self,
+        service: str,
+        file_path: str,
+    ) -> DocumentView:
+        """Safely retrieve full document content with path traversal and format protections."""
         ...

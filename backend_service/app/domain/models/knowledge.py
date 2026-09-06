@@ -24,3 +24,13 @@ class IngestionJob:
     error_message: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
+
+
+@dataclass
+class DocumentView:
+    file: str
+    service: str
+    content: str
+    content_type: str = "text/markdown"
+    total_lines: int = 0
+    size_bytes: int = 0

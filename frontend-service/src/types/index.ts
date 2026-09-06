@@ -15,6 +15,7 @@ export type MessageStatus =
 
 export interface SourceCitation {
   file: string;
+  service?: string;
   doc_type?: string;
   docType?: string;
   class_name?: string;
@@ -193,5 +194,14 @@ export interface SignupRequest {
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+export interface DocumentDetailResponse {
+  file: string;
+  service: string;
+  content: string;
+  content_type: string;
+  total_lines: number;
+  size_bytes: number;
 }
 

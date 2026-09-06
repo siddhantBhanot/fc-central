@@ -14,6 +14,7 @@ class MessageRole(str, Enum):
 @dataclass
 class SourceCitation:
     file: str
+    service: Optional[str] = None
     class_name: Optional[str] = None
     endpoint: Optional[str] = None
     start_line: Optional[int] = None
@@ -24,6 +25,7 @@ class SourceCitation:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "file": self.file,
+            "service": self.service,
             "class_name": self.class_name,
             "endpoint": self.endpoint,
             "start_line": self.start_line,
@@ -36,6 +38,7 @@ class SourceCitation:
     def from_dict(cls, data: Dict[str, Any]) -> "SourceCitation":
         return cls(
             file=data.get("file", ""),
+            service=data.get("service"),
             class_name=data.get("class_name"),
             endpoint=data.get("endpoint"),
             start_line=data.get("start_line"),

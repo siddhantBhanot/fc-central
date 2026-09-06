@@ -3,6 +3,7 @@ import type {
   AuthResponse,
   ConversationDetailResponse,
   ConversationSummary,
+  DocumentDetailResponse,
   FeedbackRequest,
   FeedbackResponse,
   HealthResponse,
@@ -163,6 +164,14 @@ export class ApiClient {
         source_path: sourcePath || null,
       }),
     });
+  }
+
+  /**
+   * Retrieve full source documentation file content safely
+   */
+  async getDocument(service: string, file: string): Promise<DocumentDetailResponse> {
+    const params = new URLSearchParams({ service, file });
+    return this.fetch<DocumentDetailResponse>(`/api/v1/documents?${params.toString()}`);
   }
 
   /**
