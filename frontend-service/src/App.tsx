@@ -99,7 +99,6 @@ function DashboardApp() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [backendHealth, setBackendHealth] = useState<'healthy' | 'degraded' | 'offline'>('offline');
   const [isIngestionModalOpen, setIsIngestionModalOpen] = useState<boolean>(false);
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState<boolean>(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
@@ -142,10 +141,9 @@ function DashboardApp() {
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        const health = await apiClient.checkHealth();
-        setBackendHealth(health.status === 'healthy' ? 'healthy' : 'degraded');
+        await apiClient.checkHealth();
       } catch {
-        setBackendHealth('offline');
+        // Backend offline or unreachable
       }
 
       try {
@@ -447,7 +445,7 @@ function DashboardApp() {
           {/* Freecharge Logo on Left */}
           <button
             onClick={handleResetHome}
-            className="flex items-center gap-2.5 text-left group cursor-pointer focus:outline-none"
+            className="flex items-center text-left group cursor-pointer focus:outline-none"
             title="Return to Home"
           >
             <img
@@ -455,33 +453,30 @@ function DashboardApp() {
               alt="FreeCharge Biz by Axis Bank"
               className="h-8 md:h-9 w-auto object-contain transition-transform group-hover:scale-[1.02]"
             />
-            <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase hidden sm:inline-block border-l border-slate-200 pl-2.5 self-center py-0.5">
-              DEVELOPER ASSISTANT
-            </span>
           </button>
 
           {/* Center Mode Switcher: Dev Chat vs Knowledge Cafe */}
-          <div className="flex items-center bg-slate-100/90 p-1 rounded-full border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center bg-slate-100/90 p-1.5 rounded-full border border-slate-200/80 shadow-2xs gap-1">
             <button
               onClick={() => setActiveMode('chat')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                 activeMode === 'chat'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5" />
+              <MessageSquare className="w-4 h-4" />
               <span>Dev Chat</span>
             </button>
             <button
               onClick={() => setActiveMode('knowledge-cafe')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                 activeMode === 'knowledge-cafe'
                   ? 'bg-[#f05a28] text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <GraduationCap className="w-3.5 h-3.5" />
+              <GraduationCap className="w-4 h-4" />
               <span>Knowledge Cafe</span>
               <span
                 className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
@@ -495,40 +490,25 @@ function DashboardApp() {
             </button>
           </div>
 
-          {/* Right Actions: Health, Knowledge Ingest, History, New Chat */}
-          <div className="flex items-center gap-2">
-            {/* Live Backend Status Badge */}
-            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-medium">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  backendHealth === 'healthy'
-                    ? 'bg-emerald-500 animate-pulse'
-                    : backendHealth === 'degraded'
-                    ? 'bg-amber-500'
-                    : 'bg-rose-500'
-                }`}
-              />
-              <span className="text-slate-600">
-                {backendHealth === 'healthy' ? 'Online' : 'Offline'}
-              </span>
-            </div>
+          {/* Right Actions: Knowledge Ingest, History, New Chat, User */}
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
             {/* Knowledge Ingestion Modal Trigger */}
             <button
               onClick={() => setIsIngestionModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
               title="Index service knowledge"
             >
-              <Database className="w-3.5 h-3.5 text-[#f05a28]" />
+              <Database className="w-4 h-4 text-[#f05a28]" />
               <span className="hidden md:inline">Index Docs</span>
             </button>
 
             {/* Conversation History Drawer Trigger */}
             <button
               onClick={() => setIsHistoryDrawerOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
               title="View conversation history"
             >
-              <History className="w-3.5 h-3.5" />
+              <History className="w-4 h-4 text-slate-500" />
               <span className="hidden md:inline">History</span>
             </button>
 
@@ -536,10 +516,10 @@ function DashboardApp() {
             {currentConversationId && isChatActive && (
               <button
                 onClick={handleOpenShare}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-[#f05a28] bg-orange-50 hover:bg-orange-100 transition-colors cursor-pointer shadow-xs"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-[#f05a28] bg-orange-50 hover:bg-orange-100 transition-colors cursor-pointer shadow-2xs"
                 title="Share this conversation"
               >
-                <Share2 className="w-3.5 h-3.5" />
+                <Share2 className="w-4 h-4" />
                 <span className="hidden sm:inline">Share</span>
               </button>
             )}
@@ -547,18 +527,18 @@ function DashboardApp() {
             {isChatActive && (
               <button
                 onClick={handleResetHome}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
                 title="Start a new conversation"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="w-4 h-4" />
                 <span className="hidden sm:inline">New Chat</span>
               </button>
             )}
 
             {/* User Identity & Logout */}
-            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+            <div className="flex items-center gap-2.5 pl-3 sm:pl-4 border-l border-slate-200 ml-1">
               <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200/80 text-xs"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200/80 text-xs"
                 title={`Signed in as ${user?.email}`}
               >
                 <span className="w-5 h-5 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center justify-center uppercase shadow-xs">
@@ -575,7 +555,7 @@ function DashboardApp() {
                   handleResetHome();
                   logout();
                 }}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
                 title="Sign out of FC Central"
               >
                 <LogOut className="w-3.5 h-3.5" />

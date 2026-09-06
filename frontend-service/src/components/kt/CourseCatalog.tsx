@@ -48,7 +48,7 @@ export function CourseCatalog({ courses, isLoading, onSelectCourse }: CourseCata
             Engineering Knowledge Transfer
           </h1>
           <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-            Curated, structured onboarding masterclasses created by senior engineers.
+            Curated, structured onboarding masterclasses.
             Step through end-to-end architectures, business rule engines, and verified code paths.
           </p>
         </div>
