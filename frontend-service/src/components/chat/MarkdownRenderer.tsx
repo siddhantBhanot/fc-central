@@ -21,30 +21,33 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
   };
 
   return (
-    <div className="prose max-w-none text-slate-700 text-sm leading-relaxed">
+    <div className="prose max-w-none text-slate-700 text-sm leading-relaxed min-w-0 break-words [overflow-wrap:anywhere]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           h1({ children }) {
-            return <h1 className="text-xl font-bold text-slate-900 mt-4 mb-2">{children}</h1>;
+            return <h1 className="text-xl font-bold text-slate-900 mt-4 mb-2 break-words [overflow-wrap:anywhere]">{children}</h1>;
           },
           h2({ children }) {
-            return <h2 className="text-lg font-bold text-slate-900 mt-3 mb-2">{children}</h2>;
+            return <h2 className="text-lg font-bold text-slate-900 mt-3 mb-2 break-words [overflow-wrap:anywhere]">{children}</h2>;
           },
           h3({ children }) {
-            return <h3 className="text-base font-semibold text-slate-800 mt-3 mb-1.5">{children}</h3>;
+            return <h3 className="text-base font-semibold text-slate-800 mt-3 mb-1.5 break-words [overflow-wrap:anywhere]">{children}</h3>;
           },
           h4({ children }) {
-            return <h4 className="text-sm font-semibold text-slate-800 mt-2 mb-1">{children}</h4>;
+            return <h4 className="text-sm font-semibold text-slate-800 mt-2 mb-1 break-words [overflow-wrap:anywhere]">{children}</h4>;
           },
           p({ children }) {
-            return <p className="mb-2 text-slate-700 leading-normal">{children}</p>;
+            return <p className="mb-2 text-slate-700 leading-normal break-words [overflow-wrap:anywhere]">{children}</p>;
           },
           ul({ children }) {
-            return <ul className="list-disc pl-5 my-2 space-y-1 text-slate-700">{children}</ul>;
+            return <ul className="list-disc pl-5 my-2 space-y-1 text-slate-700 min-w-0">{children}</ul>;
           },
           ol({ children }) {
-            return <ol className="list-decimal pl-5 my-2 space-y-1 text-slate-700">{children}</ol>;
+            return <ol className="list-decimal pl-5 my-2 space-y-1 text-slate-700 min-w-0">{children}</ol>;
+          },
+          li({ children }) {
+            return <li className="break-words [overflow-wrap:anywhere]">{children}</li>;
           },
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
@@ -55,7 +58,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
             if (isInline) {
               return (
                 <code
-                  className="bg-amber-50 text-[#f05a28] font-mono text-xs px-1.5 py-0.5 rounded border border-amber-200/70 font-medium"
+                  className="bg-amber-50 text-[#f05a28] font-mono text-xs px-1.5 py-0.5 rounded border border-amber-200/70 font-medium break-all [overflow-wrap:anywhere] whitespace-pre-wrap"
                   {...props}
                 >
                   {children}
@@ -64,7 +67,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
             }
 
             return (
-              <div className="my-3 rounded-xl overflow-hidden border border-slate-700/60 bg-[#1e2433] shadow-md">
+              <div className="my-3 rounded-xl overflow-hidden border border-slate-700/60 bg-[#1e2433] shadow-md max-w-full min-w-0">
                 <div className="flex items-center justify-between px-3.5 py-2 bg-[#151922] border-b border-slate-700/50 text-xs font-mono text-slate-400">
                   <span className="uppercase tracking-wider font-semibold text-amber-400 text-[11px]">
                     {language || 'text'}
@@ -109,7 +112,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           },
           table({ children }) {
             return (
-              <div className="overflow-x-auto my-3 rounded-lg border border-slate-200 shadow-xs">
+              <div className="overflow-x-auto my-3 rounded-lg border border-slate-200 shadow-xs max-w-full">
                 <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
                   {children}
                 </table>
@@ -125,7 +128,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           },
           td({ children }) {
             return (
-              <td className="px-3.5 py-2 text-slate-600 border-t border-slate-100">
+              <td className="px-3.5 py-2 text-slate-600 border-t border-slate-100 break-words">
                 {children}
               </td>
             );
@@ -136,7 +139,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
                 href={href}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#f05a28] hover:text-[#d94b1c] font-medium underline underline-offset-2"
+                className="text-[#f05a28] hover:text-[#d94b1c] font-medium underline underline-offset-2 break-all [overflow-wrap:anywhere]"
               >
                 {children}
               </a>

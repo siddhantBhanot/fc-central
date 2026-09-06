@@ -39,3 +39,16 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Ensure markdown text, paths, and inline code never overflow container bounds */
+.prose {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.prose code:not(pre code) {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
