@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  AlertTriangle,
   Building2,
   Calendar,
   Check,
@@ -77,7 +76,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
   };
 
   const health = customer.health;
-  const contradictions = customer.contradictions || [];
 
   return (
     <div className="space-y-6">
@@ -139,34 +137,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Contradiction & Outdated Context Alert (Section 16) */}
-      {contradictions.length > 0 && (
-        <div className="p-4 rounded-3xl bg-amber-50 border border-amber-200 text-amber-950 space-y-2 shadow-xs">
-          <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-            <span>⚠️ Contradiction / Outdated Context Detected</span>
-          </div>
-          {contradictions.map((contra) => (
-            <div key={contra.id} className="text-xs space-y-1 bg-white/80 p-3 rounded-2xl border border-amber-200">
-              <p className="font-bold text-slate-800">{contra.title}: {contra.description}</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 pt-1">
-                <div className="p-2 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="font-semibold text-slate-400 uppercase text-[9px] block">Previous Record:</span>
-                  {contra.previous_record}
-                </div>
-                <div className="p-2 bg-rose-50/50 rounded-xl border border-rose-100">
-                  <span className="font-semibold text-[#97144d] uppercase text-[9px] block">Recent Interaction:</span>
-                  {contra.recent_record}
-                </div>
-              </div>
-              <p className="text-[11px] text-amber-900 pt-1">
-                <strong>Recommendation:</strong> {contra.recommendation}
-              </p>
-            </div>
-          ))}
         </div>
       )}
 

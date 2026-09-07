@@ -289,14 +289,9 @@ export const SaathiView: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
                   <span className="font-semibold text-slate-800">{c.aum_display}</span>
-                  <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="font-bold text-slate-500">
-                      {c.open_commitments_count || c.pending_actions_count} commitments
-                    </span>
-                    {c.contradictions_count ? (
-                      <span className="text-amber-600 font-bold">⚠️ alert</span>
-                    ) : null}
-                  </div>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    {c.open_commitments_count || c.pending_actions_count} commitments
+                  </span>
                 </div>
 
                 {isSelected && (
