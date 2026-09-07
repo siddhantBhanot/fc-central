@@ -193,6 +193,68 @@ class CourseLoader:
 
         raise FileNotFoundError(f"Context document '{file_name_or_path}' not found in course '{course_id}'.")
 
+    def _parse_knowledge_check_block(self, text: str) -> Optional[KnowledgeCheck]:
+        """
+        Parse a creator-defined Knowledge Check block from markdown text.
+        Extracts Question, Type, Options (with [x] marking correct choice), and Explanation.
+        Ensures options strictly terminate before any subsequent metadata key (e.g. **Explanation**).
+        """
+        if not text:
+            return None
+
+        # 1. Locate the Knowledge Check block
+        kc_block = ""
+        kc_match = re.search(r"(?:^|\n)(?:-\s*)?\*\*(?:Knowledge Check|Quiz)\*\*:\s*\n((?:[ \t].*\n?)+)", text)
+        if kc_match:
+            kc_block = kc_match.group(1)
+        else:
+            heading_match = re.search(r"(?:^|\n)##+\s*(?:Knowledge Check|Quiz)\s*\n([\s\S]*?)(?=\n##|\Z)", text)
+            if heading_match:
+                kc_block = heading_match.group(1)
+
+        if not kc_block:
+            return None
+
+        q_match = re.search(r"-\s*\*\*Question\*\*:\s*(.+)", kc_block)
+        type_match = re.search(r"-\s*\*\*Type\*\*:\s*(.+)", kc_block)
+        exp_match = re.search(r"-\s*\*\*Explanation\*\*:\s*(.+)", kc_block)
+
+        options: List[str] = []
+        correct_idx = 0
+
+        opts_idx = kc_block.find("**Options**:")
+        if opts_idx != -1:
+            opts_sub = kc_block[opts_idx:].splitlines()[1:]
+            for opt_line in opts_sub:
+                s_line = opt_line.strip()
+                if not s_line:
+                    continue
+                # Stop if encountering another bold metadata field like - **Explanation**:
+                if re.match(r"^-\s*\*\*[A-Za-z]+", s_line):
+                    break
+                if s_line.startswith("-"):
+                    item = s_line.lstrip("-").strip()
+                    if item.startswith("**"):
+                        break
+                    if item.startswith("[x]") or item.startswith("[X]"):
+                        correct_idx = len(options)
+                        item = item[3:].strip()
+                    elif item.startswith("[ ]"):
+                        item = item[3:].strip()
+                    if item:
+                        options.append(item)
+
+        if q_match and options:
+            return KnowledgeCheck(
+                question=q_match.group(1).strip(),
+                type=type_match.group(1).strip() if type_match else "multiple_choice",
+                options=options,
+                correct_option_index=correct_idx,
+                explanation=exp_match.group(1).strip() if exp_match else "",
+            )
+
+        return None
+
     def _parse_course_structure(self, file_path: Path, course_dir: Path) -> Optional[CourseDefinition]:
         text = file_path.read_text(encoding="utf-8", errors="replace")
 
@@ -265,40 +327,34 @@ class CourseLoader:
                         if c_file and not c_file.startswith("**"):
                             context_files.append(c_file)
 
-            # Knowledge check regex
-            kc_match = re.search(r"-\s*\*\*Knowledge Check\*\*:\s*\n((?:[ \t].*\n?)+)", body)
-            if kc_match:
-                kc_block = kc_match.group(1)
-                q_match = re.search(r"-\s*\*\*Question\*\*:\s*(.+)", kc_block)
-                type_match = re.search(r"-\s*\*\*Type\*\*:\s*(.+)", kc_block)
-                exp_match = re.search(r"-\s*\*\*Explanation\*\*:\s*(.+)", kc_block)
+            # Knowledge check:
+            # 1. Parse directly from course-structure.md lesson body
+            knowledge_check = self._parse_knowledge_check_block(body)
 
-                opts_match = re.search(r"-\s*\*\*Options\*\*:\s*\n((?:\s*-\s*.+\n?)+)", kc_block)
-                options: List[str] = []
-                correct_idx = 0
+            # 2. If not defined in course-structure.md, check for dedicated knowledge-check.md in lesson directory
+            if not knowledge_check and course_dir:
+                lesson_folder_candidates = [
+                    course_dir / "lessons" / formatted_id / "knowledge-check.md",
+                    course_dir / "lessons" / formatted_id / "quiz.md",
+                ]
+                for cand in lesson_folder_candidates:
+                    if cand.is_file():
+                        cand_text = cand.read_text(encoding="utf-8", errors="replace")
+                        knowledge_check = self._parse_knowledge_check_block(cand_text)
+                        if knowledge_check:
+                            break
 
-                if opts_match:
-                    opt_lines = opts_match.group(1).splitlines()
-                    for opt_i, opt_l in enumerate(opt_lines):
-                        opt_l = opt_l.strip().lstrip("-").strip()
-                        if not opt_l:
-                            continue
-                        if opt_l.startswith("[x]") or opt_l.startswith("[X]"):
-                            correct_idx = len(options)
-                            clean_opt = opt_l[3:].strip()
-                            options.append(clean_opt)
-                        else:
-                            clean_opt = opt_l.replace("[ ]", "").strip()
-                            options.append(clean_opt)
-
-                if q_match and options:
-                    knowledge_check = KnowledgeCheck(
-                        question=q_match.group(1).strip(),
-                        type=type_match.group(1).strip() if type_match else "multiple_choice",
-                        options=options,
-                        correct_option_index=correct_idx,
-                        explanation=exp_match.group(1).strip() if exp_match else "",
-                    )
+                # 3. Check inside referenced context files for an embedded Knowledge Check
+                if not knowledge_check:
+                    for cf in context_files:
+                        cf_clean = cf.strip().lstrip("/\\")
+                        cf_path = (course_dir / cf_clean).resolve()
+                        if cf_path.is_file() and cf_path.is_relative_to(course_dir):
+                            cf_text = cf_path.read_text(encoding="utf-8", errors="replace")
+                            if "**Knowledge Check**" in cf_text or "## Knowledge Check" in cf_text:
+                                knowledge_check = self._parse_knowledge_check_block(cf_text)
+                                if knowledge_check:
+                                    break
 
             lessons.append(
                 LessonMetadata(
