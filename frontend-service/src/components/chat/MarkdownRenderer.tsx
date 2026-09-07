@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Check, Copy } from 'lucide-react';
+import { MermaidRenderer } from './MermaidRenderer';
 
 interface MarkdownRendererProps {
   content: string;
@@ -51,7 +52,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           },
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
-            const language = match ? match[1] : '';
+            const language = match ? match[1].toLowerCase() : '';
             const codeString = String(children).replace(/\n$/, '');
             const isInline = !match && !codeString.includes('\n');
 
@@ -64,6 +65,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
                   {children}
                 </code>
               );
+            }
+
+            const isMermaid =
+              language === 'mermaid' ||
+              (!language && /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline)\b/m.test(codeString.trim()));
+
+            if (isMermaid) {
+              return <MermaidRenderer chart={codeString} />;
             }
 
             return (
