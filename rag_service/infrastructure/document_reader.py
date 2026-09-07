@@ -6,7 +6,7 @@ from typing import Optional, Set
 from rag_service.domain.models import DocumentContent
 
 
-ALLOWED_DOC_EXTENSIONS: Set[str] = {".md", ".markdown", ".txt", ".rst"}
+ALLOWED_DOC_EXTENSIONS: Set[str] = {".md", ".markdown", ".txt", ".rst", ".pdf"}
 SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
@@ -88,11 +88,17 @@ class DocumentReader:
                 "Source code and binary files cannot be viewed."
             )
 
-        # Candidate directories to search (docs/ subfolder or service root)
+        # Candidate directories to search (docs/, pending/, uploads/ subfolders or service root)
         docs_dir = (service_root / "docs").resolve()
+        pending_dir = (service_root / "pending").resolve()
+        uploads_dir = (service_root / "uploads").resolve()
         candidates = []
         if docs_dir.is_dir() and docs_dir.is_relative_to(self.data_dir):
             candidates.append((docs_dir / clean_name).resolve())
+        if pending_dir.is_dir() and pending_dir.is_relative_to(self.data_dir):
+            candidates.append((pending_dir / clean_name).resolve())
+        if uploads_dir.is_dir() and uploads_dir.is_relative_to(self.data_dir):
+            candidates.append((uploads_dir / clean_name).resolve())
         candidates.append((service_root / clean_name).resolve())
 
         # 1. Path traversal guard: all candidate locations must be inside service_root
@@ -114,8 +120,24 @@ class DocumentReader:
 
         # 3. Content reading & metadata
         suffix = target_path.suffix.lower()
-        content = target_path.read_text(encoding="utf-8", errors="replace")
-        content_type = "text/markdown" if suffix in [".md", ".markdown"] else "text/plain"
+        if suffix == ".pdf":
+            try:
+                import pypdf
+
+                reader = pypdf.PdfReader(str(target_path))
+                pages_text = []
+                for i, page in enumerate(reader.pages):
+                    page_content = page.extract_text() or ""
+                    pages_text.append(f"## Page {i + 1}\n\n{page_content.strip()}")
+                content = "\n\n".join(pages_text) if pages_text else "*(Empty PDF document)*"
+                content_type = "text/markdown"
+            except Exception as e:
+                content = f"Error extracting text from PDF: {e}"
+                content_type = "text/plain"
+        else:
+            content = target_path.read_text(encoding="utf-8", errors="replace")
+            content_type = "text/markdown" if suffix in [".md", ".markdown"] else "text/plain"
+
         total_lines = len(content.splitlines())
         size_bytes = target_path.stat().st_size
 

@@ -134,6 +134,66 @@ class MockRAGClient(RAGClientProtocol):
             size_bytes=doc.size_bytes,
         )
 
+    async def upload_document(
+        self,
+        service: str,
+        file_name: str,
+        content_bytes: bytes,
+    ) -> dict:
+        await asyncio.sleep(0.01)
+        return {
+            "filename": file_name,
+            "service": service,
+            "size_bytes": len(content_bytes),
+            "status": "pending",
+            "message": f"Mock: File '{file_name}' staged for review.",
+        }
+
+    async def list_service_files(
+        self,
+        service: str,
+    ) -> List[dict]:
+        await asyncio.sleep(0.01)
+        return [
+            {
+                "name": "01-architecture.md",
+                "path": "01-architecture.md",
+                "service": service,
+                "format": "MD",
+                "size_bytes": 1024,
+                "status": "ingested",
+                "modified_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
+
+    async def upload_course_zip(
+        self,
+        file_name: str,
+        content_bytes: bytes,
+    ) -> dict:
+        await asyncio.sleep(0.01)
+        return {
+            "course_id": "mock-course-kt",
+            "title": "Mock Course",
+            "target_service": "income-assessment-service",
+            "total_lessons": 5,
+            "status": "pending",
+            "message": "Mock course uploaded and staged for review.",
+        }
+
+    async def list_pending_courses(self) -> List[dict]:
+        await asyncio.sleep(0.01)
+        return []
+
+    async def trigger_course_ingestion(self, course_id: str) -> dict:
+        await asyncio.sleep(0.01)
+        return {
+            "course_id": course_id,
+            "status": "completed",
+            "chunks_indexed": 15,
+            "message": f"Mock course '{course_id}' indexed successfully.",
+        }
+
     async def trigger_ingestion(
         self,
         service: str = "income-assessment-service",

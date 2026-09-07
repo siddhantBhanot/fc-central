@@ -1,4 +1,3 @@
-
 ---
 
 service: income-assessment-service
@@ -769,9 +768,3 @@ Kotlin source code remains the implementation-level evidence.
 * `flows/perfios-flow.md` — detailed Perfios journey
 * `flows/cap-flow.md` — detailed CAP journey
 * `flows/income-assessment-flow.md` — detailed IA journey
-
-Copy agent link
-Report this
-Terms of Service
-
-This paste expires in <1 hour. Public IP access. Share what you see with others in seconds with Context.

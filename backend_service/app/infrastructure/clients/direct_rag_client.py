@@ -419,11 +419,154 @@ class DirectRAGClient(RAGClientProtocol):
             size_bytes=doc.size_bytes,
         )
 
+    async def upload_document(
+        self,
+        service: str,
+        file_name: str,
+        content_bytes: bytes,
+    ) -> dict:
+        import re
+
+        service_pattern = re.compile(r"^[a-zA-Z0-9_\-]+$")
+        if not service or not service_pattern.match(service):
+            raise ValueError(f"Invalid service identifier: '{service}'")
+
+        safe_name = Path(file_name).name
+        suffix = Path(safe_name).suffix.lower()
+        if suffix not in {".md", ".markdown", ".pdf", ".zip"}:
+            raise ValueError(
+                f"Unsupported file format '{suffix}'. Supported formats: .md, .pdf, or .zip archive."
+            )
+
+        pending_dir = _project_root / "rag_service" / "sample_data" / service / "pending"
+        pending_dir.mkdir(parents=True, exist_ok=True)
+
+        if suffix == ".zip":
+            import io
+            import zipfile
+
+            extracted_files = []
+            try:
+                with zipfile.ZipFile(io.BytesIO(content_bytes)) as zf:
+                    # Security check: zip-slip check
+                    for member in zf.infolist():
+                        p = Path(member.filename)
+                        if p.is_absolute() or ".." in p.parts:
+                            raise ValueError(f"Malicious zip entry detected: {member.filename}")
+
+                    allowed_inner = {".md", ".markdown", ".pdf"}
+                    for member in zf.infolist():
+                        if member.is_dir():
+                            continue
+                        inner_path = Path(member.filename)
+                        if inner_path.suffix.lower() in allowed_inner and not inner_path.name.startswith("."):
+                            dest_name = inner_path.name
+                            target_file = pending_dir / dest_name
+                            target_file.write_bytes(zf.read(member.filename))
+                            extracted_files.append(dest_name)
+
+                if not extracted_files:
+                    raise ValueError(
+                        "No valid .md or .pdf documentation files were found in the uploaded zip archive."
+                    )
+
+                return {
+                    "filename": safe_name,
+                    "service": service,
+                    "size_bytes": len(content_bytes),
+                    "status": "pending",
+                    "extracted_files_count": len(extracted_files),
+                    "message": f"Archive '{safe_name}' unpacked successfully. {len(extracted_files)} documentation file(s) staged under pending review. Ingestion not triggered.",
+                }
+            except zipfile.BadZipFile:
+                raise ValueError("Corrupted or invalid ZIP archive.")
+
+        target_file = pending_dir / safe_name
+        target_file.write_bytes(content_bytes)
+
+        return {
+            "filename": safe_name,
+            "service": service,
+            "size_bytes": len(content_bytes),
+            "status": "pending",
+            "extracted_files_count": None,
+            "message": f"File '{safe_name}' uploaded successfully. It is staged under pending review and has NOT triggered RAG ingestion.",
+        }
+
+    async def list_service_files(
+        self,
+        service: str,
+    ) -> List[dict]:
+        import re
+
+        service_pattern = re.compile(r"^[a-zA-Z0-9_\-]+$")
+        if not service or not service_pattern.match(service):
+            raise ValueError(f"Invalid service identifier: '{service}'")
+
+        service_dir = _project_root / "rag_service" / "sample_data" / service
+        if not service_dir.is_dir():
+            return []
+
+        allowed_exts = {".md", ".markdown", ".pdf"}
+        results = []
+
+        # 1. Check pending directory
+        pending_dir = service_dir / "pending"
+        if pending_dir.is_dir():
+            for p in pending_dir.iterdir():
+                if p.is_file() and p.suffix.lower() in allowed_exts:
+                    stat = p.stat()
+                    results.append({
+                        "name": p.name,
+                        "path": f"pending/{p.name}",
+                        "service": service,
+                        "format": "PDF" if p.suffix.lower() == ".pdf" else "MD",
+                        "size_bytes": stat.st_size,
+                        "status": "pending",
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                    })
+
+        # 2. Check service root and docs/ directory for ingested documents
+        seen_names = set()
+        for p in service_dir.iterdir():
+            if p.is_file() and p.suffix.lower() in allowed_exts:
+                stat = p.stat()
+                results.append({
+                    "name": p.name,
+                    "path": p.name,
+                    "service": service,
+                    "format": "PDF" if p.suffix.lower() == ".pdf" else "MD",
+                    "size_bytes": stat.st_size,
+                    "status": "ingested",
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                })
+                seen_names.add(p.name)
+
+        docs_dir = service_dir / "docs"
+        if docs_dir.is_dir():
+            for p in docs_dir.iterdir():
+                if p.is_file() and p.suffix.lower() in allowed_exts and p.name not in seen_names:
+                    stat = p.stat()
+                    results.append({
+                        "name": p.name,
+                        "path": f"docs/{p.name}",
+                        "service": service,
+                        "format": "PDF" if p.suffix.lower() == ".pdf" else "MD",
+                        "size_bytes": stat.st_size,
+                        "status": "ingested",
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                    })
+
+        # Sort pending first, then by name
+        results.sort(key=lambda x: (0 if x["status"] == "pending" else 1, x["name"].lower()))
+        return results
+
     async def trigger_ingestion(
         self,
         service: str = "income-assessment-service",
         source_directory: Optional[str] = None,
     ) -> IngestionJob:
+        import shutil
         if self._ingestion is None:
             self._init_rag()
         if self._ingestion is None:
@@ -449,6 +592,19 @@ class DirectRAGClient(RAGClientProtocol):
                 job.completed_at = datetime.now(timezone.utc)
                 return job
 
+            # Promote pending files to target_dir before ingestion
+            pending_dir = target_dir / "pending"
+            if pending_dir.is_dir():
+                for p in pending_dir.iterdir():
+                    if p.is_file() and p.suffix.lower() in {".md", ".markdown", ".pdf"}:
+                        dest = target_dir / p.name
+                        shutil.move(str(p), str(dest))
+                try:
+                    if not any(pending_dir.iterdir()):
+                        pending_dir.rmdir()
+                except Exception:
+                    pass
+
             ingest_result = await self._ingestion.ingest_directory(target_dir, service=service)
             job.total_files = ingest_result.get("total_files", 0)
             job.total_chunks = ingest_result.get("total_chunks", 0)
@@ -461,6 +617,128 @@ class DirectRAGClient(RAGClientProtocol):
             job.error_message = str(e)
             job.completed_at = datetime.now(timezone.utc)
             return job
+
+    async def upload_course_zip(
+        self,
+        file_name: str,
+        content_bytes: bytes,
+    ) -> dict:
+        import io
+        import shutil
+        import tempfile
+        import zipfile
+        from pathlib import Path
+
+        if not file_name.lower().endswith(".zip"):
+            raise ValueError("Only .zip archives are supported for Knowledge Cafe course uploads.")
+
+        if len(content_bytes) == 0:
+            raise ValueError("Uploaded zip file is empty.")
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(content_bytes)) as zf:
+                # Security: prevent zip-slip attacks
+                for member in zf.infolist():
+                    target_path = Path(member.filename)
+                    if target_path.is_absolute() or ".." in target_path.parts:
+                        raise ValueError(f"Malicious zip entry detected: {member.filename}")
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    zf.extractall(tmpdir)
+                    tmp_path = Path(tmpdir)
+
+                    # Look for course-structure.md
+                    structure_files = list(tmp_path.rglob("course-structure.md"))
+                    if not structure_files:
+                        raise ValueError(
+                            "Invalid course package: 'course-structure.md' was not found in the uploaded zip archive."
+                        )
+
+                    structure_file = structure_files[0]
+                    course_dir = structure_file.parent
+
+                    from rag_service.knowledge_cafe.course_loader import get_course_loader
+                    loader = get_course_loader()
+                    course = loader._parse_course_structure(structure_file, course_dir)
+                    if not course or not course.id:
+                        raise ValueError("Failed to parse valid course definition from course-structure.md")
+
+                    pending_root = _project_root / "rag_service" / "knowledge_cafe" / "pending"
+                    pending_root.mkdir(parents=True, exist_ok=True)
+                    dest_dir = pending_root / course.id
+                    if dest_dir.exists():
+                        shutil.rmtree(dest_dir)
+                    shutil.copytree(course_dir, dest_dir)
+
+                    return {
+                        "course_id": course.id,
+                        "title": course.title,
+                        "target_service": course.target_service,
+                        "total_lessons": len(course.lessons),
+                        "status": "pending",
+                        "message": f"Course '{course.title}' ({course.id}) uploaded and staged for review. Ingestion not triggered.",
+                    }
+        except zipfile.BadZipFile:
+            raise ValueError("Corrupted or invalid ZIP archive.")
+
+    async def list_pending_courses(self) -> List[dict]:
+        from datetime import datetime, timezone
+        from rag_service.knowledge_cafe.course_loader import get_course_loader
+
+        pending_root = _project_root / "rag_service" / "knowledge_cafe" / "pending"
+        if not pending_root.is_dir():
+            return []
+
+        loader = get_course_loader()
+        courses = []
+        for item in sorted(pending_root.iterdir()):
+            if item.is_dir():
+                sf = item / "course-structure.md"
+                if sf.is_file():
+                    try:
+                        c = loader._parse_course_structure(sf, item)
+                        if c:
+                            courses.append({
+                                "course_id": c.id,
+                                "title": c.title,
+                                "target_service": c.target_service,
+                                "domain": c.domain,
+                                "difficulty": c.difficulty,
+                                "total_lessons": len(c.lessons),
+                                "status": "pending",
+                                "staged_at": datetime.fromtimestamp(item.stat().st_mtime, timezone.utc).isoformat(),
+                            })
+                    except Exception:
+                        pass
+        return courses
+
+    async def trigger_course_ingestion(self, course_id: str) -> dict:
+        import shutil
+        if self._course_indexer is None:
+            self._init_rag()
+        if self._course_indexer is None:
+            raise RAGServiceException("Knowledge Cafe Course Indexer could not be initialized.")
+
+        pending_dir = _project_root / "rag_service" / "knowledge_cafe" / "pending" / course_id
+        courses_dir = _project_root / "rag_service" / "knowledge_cafe" / "courses" / course_id
+
+        if pending_dir.is_dir():
+            if courses_dir.exists():
+                shutil.rmtree(courses_dir)
+            courses_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(pending_dir, courses_dir)
+            shutil.rmtree(pending_dir)
+
+        if not courses_dir.is_dir():
+            raise FileNotFoundError(f"Course '{course_id}' not found in pending staging or published courses.")
+
+        chunks_count = await self._course_indexer.index_course(course_id, force=True)
+        return {
+            "course_id": course_id,
+            "status": "completed",
+            "chunks_indexed": chunks_count,
+            "message": f"Course '{course_id}' successfully indexed into Knowledge Cafe vector store with {chunks_count} chunks.",
+        }
 
     async def _ensure_kt_indexed(self, course_id: Optional[str] = None):
         if not self._course_indexer:
@@ -486,7 +764,6 @@ class DirectRAGClient(RAGClientProtocol):
             self._init_rag()
         if self._kt_engine is None:
             return []
-        await self._ensure_kt_indexed()
         return self._kt_engine.list_courses()
 
     async def get_course_detail(self, course_id: str) -> Optional[dict]:
@@ -494,7 +771,6 @@ class DirectRAGClient(RAGClientProtocol):
             self._init_rag()
         if self._kt_engine is None:
             return None
-        await self._ensure_kt_indexed(course_id)
         return self._kt_engine.get_course_detail(course_id)
 
     async def synthesize_lesson(

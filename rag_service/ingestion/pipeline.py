@@ -39,11 +39,10 @@ class IngestionPipeline:
         if not path.exists():
             raise FileNotFoundError(f"File not found for ingestion: {path}")
 
-        content = path.read_text(encoding="utf-8", errors="replace")
         target_service = service or self.default_service
-
         suffix = path.suffix.lower()
         if suffix in [".kt", ".kts"]:
+            content = path.read_text(encoding="utf-8", errors="replace")
             chunker = KotlinChunker(service=target_service)
             chunks = chunker.chunk(
                 content=content,
@@ -51,7 +50,29 @@ class IngestionPipeline:
                 source=source,
                 extra_metadata=extra_metadata,
             )
+        elif suffix == ".pdf":
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(str(path))
+                pages_text = []
+                for page_num, page in enumerate(reader.pages, start=1):
+                    t = page.extract_text() or ""
+                    if t.strip():
+                        pages_text.append(f"## Page {page_num}\n\n{t.strip()}")
+                content = "\n\n".join(pages_text) if pages_text else "Empty PDF document"
+            except Exception as e:
+                content = f"Error reading PDF {path.name}: {e}"
+            chunker = MarkdownChunker(service=target_service)
+            meta = dict(extra_metadata or {})
+            meta["file_type"] = "pdf"
+            chunks = chunker.chunk(
+                content=content,
+                file_path=str(path),
+                source=source,
+                extra_metadata=meta,
+            )
         elif suffix in [".md", ".markdown"]:
+            content = path.read_text(encoding="utf-8", errors="replace")
             chunker = MarkdownChunker(service=target_service)
             chunks = chunker.chunk(
                 content=content,
@@ -61,6 +82,7 @@ class IngestionPipeline:
             )
         else:
             # Default text chunking via markdown chunker
+            content = path.read_text(encoding="utf-8", errors="replace")
             chunker = MarkdownChunker(service=target_service)
             chunks = chunker.chunk(
                 content=content,
@@ -90,13 +112,13 @@ class IngestionPipeline:
         pattern: str = "**/*",
     ) -> Dict[str, Any]:
         """
-        Recursively ingest all matching Kotlin and Markdown files in a directory.
+        Recursively ingest all matching Kotlin, Markdown, and PDF files in a directory.
         """
         dir_path = Path(directory_path)
         if not dir_path.is_dir():
             raise NotADirectoryError(f"Directory not found: {dir_path}")
 
-        allowed_extensions = {".md", ".markdown", ".kt", ".kts"}
+        allowed_extensions = {".md", ".markdown", ".pdf", ".kt", ".kts"}
         total_chunks = 0
         ingested_files = []
 

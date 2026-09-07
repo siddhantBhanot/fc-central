@@ -59,6 +59,38 @@ class RAGClientProtocol(Protocol):
         """Safely retrieve full document content with path traversal and format protections."""
         ...
 
+    async def upload_document(
+        self,
+        service: str,
+        file_name: str,
+        content_bytes: bytes,
+    ) -> dict:
+        """Stage an uploaded document (.md or .pdf) for a microservice without triggering ingestion."""
+        ...
+
+    async def list_service_files(
+        self,
+        service: str,
+    ) -> List[dict]:
+        """List documents staged and ingested for a microservice with status."""
+        ...
+
+    async def upload_course_zip(
+        self,
+        file_name: str,
+        content_bytes: bytes,
+    ) -> dict:
+        """Stage an uploaded course ZIP file for Knowledge Cafe without triggering ingestion."""
+        ...
+
+    async def list_pending_courses(self) -> List[dict]:
+        """List all Knowledge Cafe courses currently staged under pending review."""
+        ...
+
+    async def trigger_course_ingestion(self, course_id: str) -> dict:
+        """Promote a pending course and index all its lesson contexts into Knowledge Cafe Qdrant."""
+        ...
+
     async def list_courses(self) -> List[dict]:
         """List all available Knowledge Cafe courses."""
         ...

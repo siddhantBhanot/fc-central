@@ -1,4 +1,3 @@
-
 # Income Assessment Service — Architecture
 
 ## 1. Purpose
@@ -1189,9 +1188,3 @@ src/main/resources/transformers/
 
 
 When implementation and documentation differ, verify behavior against the current repository implementation and configuration.
-
-Copy agent link
-Report this
-Terms of Service
-
-This paste expires in <1 hour. Public IP access. Share what you see with others in seconds with Context.

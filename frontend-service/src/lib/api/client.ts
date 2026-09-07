@@ -5,19 +5,24 @@ import type {
   ConversationSummary,
   CompleteLessonResult,
   CourseDetail,
+  CourseIngestResponse,
   CourseSummary,
+  CourseUploadResponse,
   DocumentDetailResponse,
   EnrollResult,
   FeedbackRequest,
   FeedbackResponse,
   HealthResponse,
   KnowledgeCheckResult,
+  KnowledgeFileInfo,
   KnowledgeIngestResponse,
+  KnowledgeUploadResponse,
   LessonDetail,
   LessonDoubt,
   LoginRequest,
   Microservice,
   ModelsResponse,
+  PendingCourseInfo,
   QueryRequest,
   QueryResponse,
   ShareResponse,
@@ -325,7 +330,29 @@ export class ApiClient {
   }
 
   /**
-   * Trigger semantic chunking, embedding, and vector persistence for a microservice
+   * Upload a microservice documentation file (.md or .pdf) to staging (no ingestion triggered)
+   */
+  async uploadKnowledgeFile(service: string, file: File): Promise<KnowledgeUploadResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('service', service);
+
+    return this.fetch<KnowledgeUploadResponse>('/api/v1/knowledge/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  /**
+   * List all documentation files (pending review and ingested) for a microservice
+   */
+  async listKnowledgeFiles(service: string): Promise<KnowledgeFileInfo[]> {
+    const params = new URLSearchParams({ service });
+    return this.fetch<KnowledgeFileInfo[]>(`/api/v1/knowledge/files?${params.toString()}`);
+  }
+
+  /**
+   * Trigger semantic chunking, embedding, and vector persistence for a microservice (Maintainer action)
    */
   async triggerKnowledgeIngestion(
     service: string,
@@ -337,6 +364,36 @@ export class ApiClient {
         service,
         source_path: sourcePath || null,
       }),
+    });
+  }
+
+  /**
+   * Upload a Knowledge Cafe course package (.zip archive) to staging (no ingestion triggered)
+   */
+  async uploadCourseZip(file: File): Promise<CourseUploadResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.fetch<CourseUploadResponse>('/api/v1/knowledge/course/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  /**
+   * List all Knowledge Cafe courses currently staged under pending review
+   */
+  async listPendingCourses(): Promise<PendingCourseInfo[]> {
+    return this.fetch<PendingCourseInfo[]>('/api/v1/knowledge/course/pending');
+  }
+
+  /**
+   * Promote and index a staged Knowledge Cafe course into Qdrant vector store
+   */
+  async triggerCourseIngestion(courseId: string): Promise<CourseIngestResponse> {
+    return this.fetch<CourseIngestResponse>('/api/v1/knowledge/course/ingest', {
+      method: 'POST',
+      body: JSON.stringify({ course_id: courseId }),
     });
   }
 

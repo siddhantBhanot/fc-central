@@ -104,6 +104,52 @@ export interface KnowledgeIngestResponse {
   completed_at?: string | null;
 }
 
+export interface KnowledgeUploadResponse {
+  filename: string;
+  service: string;
+  size_bytes: number;
+  status: string;
+  extracted_files_count?: number | null;
+  message: string;
+}
+
+export interface KnowledgeFileInfo {
+  name: string;
+  path: string;
+  service: string;
+  format: 'MD' | 'PDF' | string;
+  size_bytes: number;
+  status: 'pending' | 'ingested';
+  modified_at: string;
+}
+
+export interface CourseUploadResponse {
+  course_id: string;
+  title: string;
+  target_service: string;
+  total_lessons: number;
+  status: string;
+  message: string;
+}
+
+export interface PendingCourseInfo {
+  course_id: string;
+  title: string;
+  target_service: string;
+  domain: string;
+  difficulty: string;
+  total_lessons: number;
+  status: string;
+  staged_at: string;
+}
+
+export interface CourseIngestResponse {
+  course_id: string;
+  status: string;
+  chunks_indexed: number;
+  message: string;
+}
+
 export interface HealthResponse {
   status: 'healthy' | 'degraded';
   service: string;

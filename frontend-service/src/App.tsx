@@ -4,7 +4,6 @@ import {
   ArrowUp,
   ChevronDown,
   Code2,
-  Database,
   GitBranch,
   GitMerge,
   GraduationCap,
@@ -19,6 +18,7 @@ import {
   AlertCircle,
   Share2,
   Cpu,
+  UploadCloud,
 } from 'lucide-react';
 
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
@@ -496,10 +496,10 @@ function DashboardApp() {
             <button
               onClick={() => setIsIngestionModalOpen(true)}
               className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="Index service knowledge"
+              title="Upload and stage documentation or courses"
             >
-              <Database className="w-4 h-4 text-[#f05a28]" />
-              <span className="hidden md:inline">Index Docs</span>
+              <UploadCloud className="w-4 h-4 text-[#f05a28]" />
+              <span className="hidden md:inline">Upload Docs</span>
             </button>
 
             {/* Conversation History Drawer Trigger */}
@@ -1008,6 +1008,7 @@ function DashboardApp() {
         isOpen={isIngestionModalOpen}
         onClose={() => setIsIngestionModalOpen(false)}
         service={selectedService}
+        services={services}
       />
 
       {/* Conversation History Drawer */}

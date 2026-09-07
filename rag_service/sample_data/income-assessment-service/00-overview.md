@@ -1,4 +1,3 @@
-
 # Income Assessment Knowledge Base
 
 This folder is the context pack for **RAG-based developer assistance and onboarding** for the `income-assessment-service`.
@@ -625,8 +624,41 @@ Grounded Developer Answer
 
 The knowledge base should therefore remain **implementation-aware, business-focused, and traceable to repository evidence**.
 
-Copy agent link
-Report this
-Terms of Service
+---
 
-This paste expires in <1 hour. Public IP access. Share what you see with others in seconds with Context.
+## 15. Source citations by primary section
+
+### Sections 1-4: service overview, integrations, mental model, execution model
+
+**Source citations**
+- `README.md:3-37`
+- `build.gradle:207-269`
+- `src/main/kotlin/com/axis/lending/incomeassesmentservice/Application.kt:8-15`
+- `src/main/kotlin/com/axis/lending/incomeassesmentservice/revamp/service/impl/IncomeAssessmentApplicationServiceV3.kt:147-185`
+
+### Section 5: primary code anchors
+
+**Source citations**
+- `src/main/kotlin/com/axis/lending/incomeassesmentservice/controller/IncomeAssessmentApplicationController.kt:35-395`
+- `src/main/kotlin/com/axis/lending/incomeassesmentservice/zenithorch/gateway/ZenithOrchestratorGateway.kt:54-69`
+- `src/main/kotlin/com/axis/lending/incomeassesmentservice/repository/IncomeAssessmentRepository.kt:26-66`
+- `src/main/resources/application.yaml:53-203`
+
+### Sections 6-14: knowledge-base structure, source-of-truth rules, version guidance, RAG usage, maintenance, navigation
+
+**Source citations**
+- `income-assessment-knowledge/01-architecture.md:1-465`
+- `income-assessment-knowledge/02-request-flows.md:1-117`
+- `income-assessment-knowledge/03-api-contracts.md:1-1230`
+- `income-assessment-knowledge/04-business-logic.md:1-115`
+- `income-assessment-knowledge/05-integrations.md:1-84`
+- `income-assessment-knowledge/06-database.md:1-103`
+- `income-assessment-knowledge/07-kafka-events.md:1-73`
+- `income-assessment-knowledge/08-error-handling.md:1-110`
+- `income-assessment-knowledge/09-configuration.md:1-103`
+- `income-assessment-knowledge/10-troubleshooting.md:1-103`
+- `income-assessment-knowledge/11-glossary.md:1-27`
+- `income-assessment-knowledge/flows/perfios-flow.md:1-72`
+- `income-assessment-knowledge/flows/cap-flow.md:1-65`
+- `income-assessment-knowledge/flows/income-assessment-flow.md:1-87`
+
