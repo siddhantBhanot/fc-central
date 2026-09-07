@@ -51,71 +51,9 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
     }
   };
 
-  const health = customer.health;
-
   return (
     <div className="space-y-6">
       
-      {/* Top Banner: Relationship Health & Attention View (Section 19) */}
-      {health && (
-        <div
-          className={`p-4 rounded-3xl border transition-all ${
-            health.level === 'immediate_attention'
-              ? 'bg-rose-50/80 border-rose-300 text-rose-950'
-              : health.level === 'attention_required'
-              ? 'bg-amber-50/80 border-amber-300 text-amber-950'
-              : 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-1 flex-1">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    health.level === 'immediate_attention'
-                      ? 'bg-rose-600 animate-pulse'
-                      : health.level === 'attention_required'
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
-                  }`}
-                />
-                <span className="text-[10px] font-black uppercase tracking-wider">
-                  Relationship Health • {health.level.replace('_', ' ')}
-                </span>
-              </div>
-              <h4 className="text-xs font-bold">{health.headline}</h4>
-              <ul className="space-y-0.5 pt-1 text-[11px]">
-                {health.reasons.map((r, idx) => (
-                  <li key={idx} className="flex items-center gap-1.5">
-                    <span className="font-bold">•</span>
-                    <span>{r}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Quick Action Buttons */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setIsPreCallOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-white text-[#97144d] hover:bg-rose-50 border border-rose-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <PhoneCall className="w-3.5 h-3.5 text-[#97144d]" />
-                <span>2-Min Pre-Call Brief</span>
-              </button>
-
-              <button
-                onClick={() => setIsMgmtOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>Management Dossier</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Main Experience Tab Switcher (Section 3 & 25) */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
         <div className="flex items-center gap-1.5 rounded-2xl bg-slate-100 p-1">
@@ -130,7 +68,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
             <Sparkles className="w-3.5 h-3.5" />
             <span>Relationship Brief</span>
           </button>
-
 
           <button
             onClick={() => setActiveTab('ask')}
@@ -157,7 +94,23 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setIsPreCallOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-white text-[#97144d] hover:bg-rose-50 border border-rose-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <PhoneCall className="w-3.5 h-3.5 text-[#97144d]" />
+            <span>2-Min Pre-Call Brief</span>
+          </button>
+
+          <button
+            onClick={() => setIsMgmtOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <Building2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>Management Dossier</span>
+          </button>
+
           {onOpenAddContext && (
             <button
               onClick={onOpenAddContext}

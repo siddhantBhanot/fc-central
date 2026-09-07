@@ -218,12 +218,6 @@ export const SaathiView: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {filteredCustomers.map((c) => {
             const isSelected = selectedCustomerId === c.id;
-            const healthColor =
-              c.health_level === 'immediate_attention'
-                ? 'bg-rose-500'
-                : c.health_level === 'attention_required'
-                ? 'bg-amber-500'
-                : 'bg-emerald-500';
 
             return (
               <button
@@ -243,9 +237,8 @@ export const SaathiView: React.FC = () => {
                       {c.name.charAt(0)}
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-slate-900 leading-tight flex items-center gap-1.5">
-                        <span>{c.name}</span>
-                        <span className={`w-2 h-2 rounded-full ${healthColor}`} title={`Health: ${c.health_level}`} />
+                      <h4 className="text-xs font-bold text-slate-900 leading-tight">
+                        {c.name}
                       </h4>
                       <span className="text-[10px] text-slate-500">{c.city} • {c.account_number_masked}</span>
                     </div>
