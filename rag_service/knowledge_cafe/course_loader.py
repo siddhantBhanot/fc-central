@@ -61,6 +61,7 @@ class CourseDefinition:
     difficulty: str = "Intermediate"
     estimated_duration: str = "1 hour"
     icon: str = "Layers"
+    group: str = "technical"
     tags: List[str] = field(default_factory=list)
     lessons: List[LessonMetadata] = field(default_factory=list)
     course_dir: Optional[Path] = None
@@ -76,6 +77,7 @@ class CourseDefinition:
             "difficulty": self.difficulty,
             "estimated_duration": self.estimated_duration,
             "icon": self.icon,
+            "group": self.group,
             "tags": self.tags,
             "total_lessons": len(self.lessons),
         }
@@ -98,7 +100,7 @@ class CourseLoader:
         else:
             self.courses_dir = (Path(__file__).resolve().parent / "courses").resolve()
 
-    def list_courses(self) -> List[CourseDefinition]:
+    def list_courses(self, group: Optional[str] = None) -> List[CourseDefinition]:
         courses: List[CourseDefinition] = []
         if not self.courses_dir.exists():
             return courses
@@ -114,6 +116,8 @@ class CourseLoader:
                     except Exception as e:
                         # Log and continue so one invalid course doesn't break catalog
                         pass
+        if group:
+            courses = [c for c in courses if c.group.lower() == group.lower()]
         return courses
 
     def get_course(self, course_id: str) -> Optional[CourseDefinition]:
@@ -281,6 +285,16 @@ class CourseLoader:
         estimated_duration = frontmatter_data.get("estimated_duration", "1 hour")
         icon = frontmatter_data.get("icon", "Layers")
         tags = frontmatter_data.get("tags") or []
+        
+        group = frontmatter_data.get("group")
+        if not group:
+            domain_lower = domain.lower()
+            if any(k in domain_lower for k in ["bank", "wealth", "credit", "lending", "nri", "compliance", "management"]):
+                group = "banking"
+            else:
+                group = "technical"
+        else:
+            group = str(group).lower()
 
         # 2. Parse Lessons from Markdown Headings (## XX. Title or ## Title)
         lessons: List[LessonMetadata] = []
@@ -378,6 +392,7 @@ class CourseLoader:
             difficulty=difficulty,
             estimated_duration=estimated_duration,
             icon=icon,
+            group=group,
             tags=tags,
             lessons=lessons,
             course_dir=course_dir,

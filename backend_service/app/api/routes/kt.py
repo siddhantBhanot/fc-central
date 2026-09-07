@@ -27,6 +27,7 @@ router = APIRouter(prefix="/kt", tags=["Knowledge Cafe"])
 
 @router.get("/courses", response_model=List[CourseSummaryResponse])
 async def list_courses(
+    group: Optional[str] = Query(None, description="Filter courses by group (technical or banking)"),
     current_user: Optional[User] = Depends(get_optional_current_user),
     kt_service: KTService = Depends(get_kt_service),
 ) -> List[CourseSummaryResponse]:
@@ -34,7 +35,10 @@ async def list_courses(
     Browse all creator-defined Knowledge Cafe courses with live user enrollment progress.
     """
     user_id = current_user.id if current_user else None
-    courses = await kt_service.list_courses(user_id=user_id)
+    target_group = group
+    if not target_group and current_user:
+        target_group = "banking" if current_user.role == "banking_staff" else "technical"
+    courses = await kt_service.list_courses(user_id=user_id, group=target_group)
     return [CourseSummaryResponse(**c) for c in courses]
 
 

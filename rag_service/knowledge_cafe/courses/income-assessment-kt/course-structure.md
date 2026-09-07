@@ -8,6 +8,7 @@ target_audience: New Backend & Fullstack Engineers
 difficulty: Intermediate
 estimated_duration: 1.5 hours
 icon: Layers
+group: technical
 tags:
   - Spring Boot
   - WebFlux

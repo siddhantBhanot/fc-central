@@ -5,6 +5,7 @@ description: Jenkins build and deployment pipelines for master and other branche
 target_service: Jenkins Deployment Pipelines Service
 domain: Jenkins Deployment Pipelines
 icon: Workflow
+group: technical
 tags:
   - Jenkins
   - Build

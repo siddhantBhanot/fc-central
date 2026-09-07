@@ -308,6 +308,7 @@ export interface CourseSummary {
   difficulty: string;
   estimated_duration: string;
   icon?: string;
+  group?: 'technical' | 'banking' | string;
   tags?: string[];
   total_lessons: number;
   enrollment?: CourseEnrollment | null;

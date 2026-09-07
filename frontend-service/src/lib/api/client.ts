@@ -545,8 +545,9 @@ export class ApiClient {
   /**
    * List all creator-defined courses with active user enrollment progress
    */
-  async listCourses(): Promise<CourseSummary[]> {
-    return this.fetch<CourseSummary[]>('/api/v1/kt/courses');
+  async listCourses(group?: string): Promise<CourseSummary[]> {
+    const query = group ? `?group=${encodeURIComponent(group)}` : '';
+    return this.fetch<CourseSummary[]>(`/api/v1/kt/courses${query}`);
   }
 
   /**

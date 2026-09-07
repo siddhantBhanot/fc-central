@@ -757,12 +757,12 @@ class DirectRAGClient(RAGClientProtocol):
         except Exception as e:
             logger.warning(f"Failed to trigger async KT course indexing: {e}")
 
-    async def list_courses(self) -> List[dict]:
+    async def list_courses(self, group: Optional[str] = None) -> List[dict]:
         if self._kt_engine is None:
             self._init_rag()
         if self._kt_engine is None:
             return []
-        return self._kt_engine.list_courses()
+        return self._kt_engine.list_courses(group=group)
 
     async def get_course_detail(self, course_id: str) -> Optional[dict]:
         if self._kt_engine is None:

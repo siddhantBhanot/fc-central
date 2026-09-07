@@ -27,8 +27,8 @@ class KTService:
         self.kt_repo = kt_repo
         self.rag_client = rag_client
 
-    async def list_courses(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        courses = await self.rag_client.list_courses()
+    async def list_courses(self, user_id: Optional[str] = None, group: Optional[str] = None) -> List[Dict[str, Any]]:
+        courses = await self.rag_client.list_courses(group=group)
         user_enrollments: Dict[str, CourseEnrollment] = {}
         if user_id:
             enrollments = await self.kt_repo.list_user_enrollments(user_id)

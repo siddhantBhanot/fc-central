@@ -671,6 +671,7 @@ function DashboardApp() {
         ) : activeMode === 'knowledge-cafe' ? (
           <KnowledgeCafeView
             selectedModel={selectedModel}
+            userRole={user?.role}
             onViewSource={(file, service) => {
               setActiveSourceModal({
                 isOpen: true,

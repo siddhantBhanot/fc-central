@@ -37,8 +37,8 @@ class KTEngine:
         self.kt_vector_store = kt_vector_store
         self.embedding_provider = embedding_provider
 
-    def list_courses(self) -> List[Dict[str, Any]]:
-        courses = self.course_loader.list_courses()
+    def list_courses(self, group: Optional[str] = None) -> List[Dict[str, Any]]:
+        courses = self.course_loader.list_courses(group=group)
         return [c.to_summary_dict() for c in courses]
 
     def get_course_detail(self, course_id: str) -> Optional[Dict[str, Any]]:

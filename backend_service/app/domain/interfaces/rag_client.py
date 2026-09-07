@@ -91,8 +91,8 @@ class RAGClientProtocol(Protocol):
         """Promote a pending course and index all its lesson contexts into Knowledge Cafe Qdrant."""
         ...
 
-    async def list_courses(self) -> List[dict]:
-        """List all available Knowledge Cafe courses."""
+    async def list_courses(self, group: Optional[str] = None) -> List[dict]:
+        """List all available Knowledge Cafe courses, optionally filtered by user group."""
         ...
 
     async def get_course_detail(self, course_id: str) -> Optional[dict]:

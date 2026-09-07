@@ -10,12 +10,14 @@ import type { CourseDetail, CourseSummary, LessonDetail, LessonDoubt } from '@/t
 
 interface KnowledgeCafeViewProps {
   selectedModel: string;
+  userRole?: 'developer' | 'banking_staff';
   onViewSource: (file: string, service?: string) => void;
   onExploreInChat: (service: string) => void;
 }
 
 export function KnowledgeCafeView({
   selectedModel,
+  userRole,
   onViewSource,
   onExploreInChat,
 }: KnowledgeCafeViewProps) {
@@ -35,7 +37,8 @@ export function KnowledgeCafeView({
   const loadCourses = async () => {
     setIsLoadingCatalog(true);
     try {
-      const res = await apiClient.listCourses();
+      const targetGroup = userRole === 'banking_staff' ? 'banking' : 'technical';
+      const res = await apiClient.listCourses(targetGroup);
       setCourses(res);
     } catch (e) {
       console.error('Failed to load courses:', e);
@@ -46,7 +49,7 @@ export function KnowledgeCafeView({
 
   useEffect(() => {
     loadCourses();
-  }, []);
+  }, [userRole]);
 
   // Handle Course Selection & Enrollment
   const handleSelectCourse = async (courseId: string) => {
@@ -283,6 +286,7 @@ export function KnowledgeCafeView({
       <CourseCatalog
         courses={courses}
         isLoading={isLoadingCatalog}
+        userRole={userRole}
         onSelectCourse={handleSelectCourse}
       />
     );

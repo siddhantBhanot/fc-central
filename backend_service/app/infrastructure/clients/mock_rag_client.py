@@ -211,10 +211,10 @@ class MockRAGClient(RAGClientProtocol):
             completed_at=now,
         )
 
-    async def list_courses(self) -> List[dict]:
+    async def list_courses(self, group: Optional[str] = None) -> List[dict]:
         try:
             from rag_service.knowledge_cafe.course_loader import get_course_loader
-            return [c.to_summary_dict() for c in get_course_loader().list_courses()]
+            return [c.to_summary_dict() for c in get_course_loader().list_courses(group=group)]
         except Exception:
             return [{
                 "id": "income-assessment-kt",

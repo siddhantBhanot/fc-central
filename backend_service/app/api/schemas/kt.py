@@ -43,6 +43,7 @@ class CourseSummaryResponse(BaseModel):
     difficulty: str
     estimated_duration: str
     icon: str = "Layers"
+    group: str = "technical"
     tags: List[str] = Field(default_factory=list)
     total_lessons: int
     enrollment: Optional[CourseEnrollmentSummary] = None
@@ -58,6 +59,7 @@ class CourseDetailResponse(BaseModel):
     difficulty: str
     estimated_duration: str
     icon: str = "Layers"
+    group: str = "technical"
     tags: List[str] = Field(default_factory=list)
     total_lessons: int
     enrollment: Optional[CourseEnrollmentSummary] = None
