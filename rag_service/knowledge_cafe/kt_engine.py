@@ -170,13 +170,13 @@ class KTEngine:
         sources: List[Dict[str, Any]] = []
         seen_files = set()
 
-        # 1. Semantic search in dedicated Qdrant collection filtered strictly by course_id
+        # 1. Semantic search across the whole knowledge_cafe_collection filtered strictly by course_id
         if self.kt_vector_store and self.embedding_provider:
             try:
                 query_vector = await self.embedding_provider.embed_query(question)
                 matched_chunks = await self.kt_vector_store.search(
                     query_vector=query_vector,
-                    limit=5,
+                    limit=6,
                     filter_dict={"course_id": course.id},
                 )
                 for chunk in matched_chunks:
@@ -196,10 +196,10 @@ class KTEngine:
                     f"Vector search in knowledge_cafe_collection failed, falling back to local files: {e}"
                 )
 
-        # 2. Guarantee current lesson's local context files are included
-        file_contents = self.course_loader.read_lesson_context_files(course.id, lesson.id)
-        for file_name, content in file_contents:
-            if file_name not in seen_files:
+        # 2. Fallback to local lesson context files only if vector DB search returned no results
+        if not context_blocks:
+            file_contents = self.course_loader.read_lesson_context_files(course.id, lesson.id)
+            for file_name, content in file_contents:
                 context_blocks.append(f"=== Lesson Context: {file_name} ===\n{content}\n")
                 sources.append({
                     "file": file_name,
