@@ -56,8 +56,8 @@ class DirectRAGClient(RAGClientProtocol):
             has_openai = bool(settings.openai_api_key)
             has_groq = bool(settings.groq_api_key)
 
-            # Embedder
-            if settings.aws_access_key_id and settings.aws_secret_access_key:
+            # Embedder: Default to Bedrock Titan v2 whenever AWS is configured
+            if settings.embedding_provider == "bedrock" or has_aws:
                 embedding_provider = BedrockEmbeddingProvider(settings)
             else:
                 embedding_provider = QdrantEmbeddingProvider(settings)

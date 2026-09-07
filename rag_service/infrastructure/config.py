@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     embedding_provider: str = Field(
         default_factory=lambda: os.getenv(
             "EMBEDDING_PROVIDER",
-            "bedrock" if (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")) else "qdrant",
+            "bedrock",
         )
     )
     vector_store_type: str = Field(default_factory=lambda: os.getenv("VECTOR_STORE", "qdrant"))
@@ -183,7 +183,7 @@ class Settings(BaseSettings):
         default_factory=lambda: int(
             os.getenv(
                 "EMBEDDING_DIMENSION",
-                "1024" if (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")) else "384",
+                "1024",
             )
         )
     )
