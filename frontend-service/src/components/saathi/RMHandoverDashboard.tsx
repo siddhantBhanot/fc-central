@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import {
   BookOpen,
-  Building2,
   Check,
   Copy,
   Flame,
   Heart,
   History,
   MessageCircle,
-  PhoneCall,
   Plus,
   RefreshCw,
   Repeat,
@@ -19,8 +17,6 @@ import {
 import type { CustomerRelationship } from '@/types';
 import { AskSaathiDrawer } from './AskSaathiDrawer';
 import { RelationshipTimelineView } from './RelationshipTimelineView';
-import { PreCallBriefModal } from './PreCallBriefModal';
-import { ManagementSummaryModal } from './ManagementSummaryModal';
 
 interface RMHandoverDashboardProps {
   customer: CustomerRelationship;
@@ -40,8 +36,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'brief' | 'ask' | 'timeline'>('brief');
   const [copiedStarter, setCopiedStarter] = useState(false);
-  const [isPreCallOpen, setIsPreCallOpen] = useState(false);
-  const [isMgmtOpen, setIsMgmtOpen] = useState(false);
 
   const handleCopyStarter = () => {
     if (customer.brief?.conversation_starter) {
@@ -94,22 +88,7 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setIsPreCallOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-white text-[#97144d] hover:bg-rose-50 border border-rose-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <PhoneCall className="w-3.5 h-3.5 text-[#97144d]" />
-            <span>2-Min Pre-Call Brief</span>
-          </button>
-
-          <button
-            onClick={() => setIsMgmtOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <Building2 className="w-3.5 h-3.5 text-amber-400" />
-            <span>Management Dossier</span>
-          </button>
+        <div className="flex items-center gap-2">
 
           {onOpenAddContext && (
             <button
@@ -430,19 +409,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
       {activeTab === 'timeline' && (
         <RelationshipTimelineView customer={customer} />
       )}
-
-      {/* Modals */}
-      <PreCallBriefModal
-        customer={customer}
-        isOpen={isPreCallOpen}
-        onClose={() => setIsPreCallOpen(false)}
-      />
-
-      <ManagementSummaryModal
-        customer={customer}
-        isOpen={isMgmtOpen}
-        onClose={() => setIsMgmtOpen(false)}
-      />
 
     </div>
   );
