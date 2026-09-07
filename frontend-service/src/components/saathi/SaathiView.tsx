@@ -264,8 +264,8 @@ export const SaathiView: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
                   <span className="font-semibold text-slate-800">{c.aum_display}</span>
-                  <span className="text-[10px] font-bold text-slate-500">
-                    {c.open_commitments_count || c.pending_actions_count} commitments
+                  <span className="text-[10px] font-medium text-slate-500">
+                    {c.tenure_years} yrs tenure
                   </span>
                 </div>
 

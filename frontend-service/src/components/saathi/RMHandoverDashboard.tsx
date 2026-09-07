@@ -10,13 +10,11 @@ import {
   PhoneCall,
   RefreshCw,
   Repeat,
-  ShieldCheck,
   Sparkles,
   UserCheck,
   Zap,
 } from 'lucide-react';
 import type { CustomerRelationship } from '@/types';
-import { CommitmentsDashboard } from './CommitmentsDashboard';
 import { AskSaathiDrawer } from './AskSaathiDrawer';
 import { RelationshipTimelineView } from './RelationshipTimelineView';
 import { PreCallBriefModal } from './PreCallBriefModal';
@@ -26,7 +24,7 @@ interface RMHandoverDashboardProps {
   customer: CustomerRelationship;
   onOpenCustomerView: () => void;
   onSynthesizeBrief: () => Promise<void>;
-  onRefreshCustomer: () => Promise<void>;
+  onRefreshCustomer?: () => Promise<void>;
   isSynthesizing: boolean;
 }
 
@@ -34,10 +32,9 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
   customer,
   onOpenCustomerView,
   onSynthesizeBrief,
-  onRefreshCustomer,
   isSynthesizing,
 }) => {
-  const [activeTab, setActiveTab] = useState<'brief' | 'commitments' | 'ask' | 'timeline'>('brief');
+  const [activeTab, setActiveTab] = useState<'brief' | 'ask' | 'timeline'>('brief');
   const [copiedStarter, setCopiedStarter] = useState(false);
   const [isPreCallOpen, setIsPreCallOpen] = useState(false);
   const [isMgmtOpen, setIsMgmtOpen] = useState(false);
@@ -130,17 +127,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
             <span>Relationship Brief</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('commitments')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'commitments'
-                ? 'bg-white text-[#97144d] shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>What We Owe ({customer.commitments?.length || 0})</span>
-          </button>
 
           <button
             onClick={() => setActiveTab('ask')}
@@ -422,13 +408,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
         </div>
       )}
 
-      {/* Tab 2: What We Owe (Commitments Dashboard) */}
-      {activeTab === 'commitments' && (
-        <CommitmentsDashboard
-          customer={customer}
-          onRefreshCustomer={onRefreshCustomer}
-        />
-      )}
 
       {/* Tab 3: Natural-Language Ask Saathi */}
       {activeTab === 'ask' && (
