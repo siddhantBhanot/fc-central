@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import apiClient from '@/lib/api/client';
 import type {
-  ActionStatus,
   CustomerRelationship,
   CustomerSummaryDTO,
 } from '@/types';
@@ -23,7 +22,6 @@ export const SaathiView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [isCompletingHandover, setIsCompletingHandover] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
   // Load list of customers
@@ -74,30 +72,7 @@ export const SaathiView: React.FC = () => {
     }
   };
 
-  const handleUpdateActionStatus = async (actionId: string, status: ActionStatus) => {
-    if (!selectedCustomerId) return;
-    try {
-      await apiClient.updateSaathiAction(selectedCustomerId, actionId, status);
-      await loadCustomerDetail(selectedCustomerId);
-      await loadCustomers();
-    } catch (err) {
-      console.error('Failed to update action status:', err);
-    }
-  };
 
-  const handleCompleteHandover = async () => {
-    if (!selectedCustomerId) return;
-    setIsCompletingHandover(true);
-    try {
-      await apiClient.completeSaathiHandover(selectedCustomerId);
-      await loadCustomerDetail(selectedCustomerId);
-      await loadCustomers();
-    } catch (err) {
-      console.error('Failed to complete handover:', err);
-    } finally {
-      setIsCompletingHandover(false);
-    }
-  };
 
   const handleSubmitCustomerFeedback = async (notes: string) => {
     if (!selectedCustomerId) return;
@@ -308,12 +283,9 @@ export const SaathiView: React.FC = () => {
         <RMHandoverDashboard
           customer={activeCustomer}
           onOpenCustomerView={() => setIsCustomerModalOpen(true)}
-          onUpdateActionStatus={handleUpdateActionStatus}
           onSynthesizeBrief={handleSynthesizeBrief}
-          onCompleteHandover={handleCompleteHandover}
           onRefreshCustomer={handleRefreshCustomer}
           isSynthesizing={isSynthesizing}
-          isCompletingHandover={isCompletingHandover}
         />
       ) : (
         <div className="p-12 text-center text-xs text-slate-400 bg-white rounded-3xl border border-slate-200">

@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import {
   Building2,
-  Calendar,
   Check,
-  CheckCircle2,
   Copy,
   Flame,
   Heart,
@@ -17,7 +15,7 @@ import {
   UserCheck,
   Zap,
 } from 'lucide-react';
-import type { ActionStatus, CustomerRelationship, TransitionActionItem } from '@/types';
+import type { CustomerRelationship } from '@/types';
 import { CommitmentsDashboard } from './CommitmentsDashboard';
 import { AskSaathiDrawer } from './AskSaathiDrawer';
 import { RelationshipTimelineView } from './RelationshipTimelineView';
@@ -27,27 +25,20 @@ import { ManagementSummaryModal } from './ManagementSummaryModal';
 interface RMHandoverDashboardProps {
   customer: CustomerRelationship;
   onOpenCustomerView: () => void;
-  onUpdateActionStatus: (actionId: string, status: ActionStatus) => Promise<void>;
   onSynthesizeBrief: () => Promise<void>;
-  onCompleteHandover: () => Promise<void>;
   onRefreshCustomer: () => Promise<void>;
   isSynthesizing: boolean;
-  isCompletingHandover: boolean;
 }
 
 export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
   customer,
   onOpenCustomerView,
-  onUpdateActionStatus,
   onSynthesizeBrief,
-  onCompleteHandover,
   onRefreshCustomer,
   isSynthesizing,
-  isCompletingHandover,
 }) => {
   const [activeTab, setActiveTab] = useState<'brief' | 'commitments' | 'ask' | 'timeline'>('brief');
   const [copiedStarter, setCopiedStarter] = useState(false);
-  const [updatingActionId, setUpdatingActionId] = useState<string | null>(null);
   const [isPreCallOpen, setIsPreCallOpen] = useState(false);
   const [isMgmtOpen, setIsMgmtOpen] = useState(false);
 
@@ -56,22 +47,6 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
       navigator.clipboard.writeText(customer.brief.conversation_starter);
       setCopiedStarter(true);
       setTimeout(() => setCopiedStarter(false), 2000);
-    }
-  };
-
-  const handleToggleAction = async (action: TransitionActionItem) => {
-    const nextStatus: ActionStatus =
-      action.status === 'completed'
-        ? 'pending'
-        : action.status === 'pending'
-        ? 'in_progress'
-        : 'completed';
-
-    setUpdatingActionId(action.id);
-    try {
-      await onUpdateActionStatus(action.id, nextStatus);
-    } finally {
-      setUpdatingActionId(null);
     }
   };
 
@@ -443,103 +418,7 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
                 </ul>
               </div>
             </div>
-
-            {/* Handover Action Items */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
-                <div>
-                  <h4 className="font-bold text-slate-800">Handover Action Tracker</h4>
-                  <p className="text-[11px] text-slate-500">
-                    {customer.action_items.filter((a) => a.status === 'completed').length} /{' '}
-                    {customer.action_items.length} fulfilled
-                  </p>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                  Assigned to {customer.new_rm_name.split(' ')[0]}
-                </span>
-              </div>
-
-              <div className="space-y-2.5">
-                {customer.action_items.map((act) => {
-                  const isDone = act.status === 'completed';
-                  const isUpdating = updatingActionId === act.id;
-
-                  return (
-                    <div
-                      key={act.id}
-                      onClick={() => handleToggleAction(act)}
-                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
-                        isUpdating
-                          ? 'opacity-50 pointer-events-none'
-                          : isDone
-                          ? 'bg-slate-50/60 border-slate-200/60 opacity-60'
-                          : act.priority === 'high'
-                          ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300'
-                          : 'bg-white border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 mt-0.5 rounded-md flex items-center justify-center shrink-0 border transition-all ${
-                          isDone
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'border-slate-300 bg-white hover:border-[#97144d]'
-                        }`}
-                      >
-                        {isDone && <Check className="w-3 h-3" />}
-                      </div>
-
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <span
-                            className={`text-xs font-bold leading-tight ${
-                              isDone ? 'line-through text-slate-500' : 'text-slate-900'
-                            }`}
-                          >
-                            {act.title}
-                          </span>
-                          <span
-                            className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md shrink-0 ${
-                              act.priority === 'high'
-                                ? 'bg-rose-100 text-rose-700'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {act.priority}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 leading-snug">{act.description}</p>
-                        <div className="flex items-center gap-2 pt-0.5 text-[10px] text-slate-400 font-mono">
-                          <Calendar className="w-3 h-3" />
-                          <span>SLA: {act.sla_date}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Complete Handover Button */}
-              <button
-                onClick={onCompleteHandover}
-                disabled={isCompletingHandover || customer.status === 'handover_active'}
-                className="w-full py-2.5 px-4 bg-[#97144d] hover:bg-[#800e3e] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {customer.status === 'handover_active' ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                    <span>Relationship Handover Active</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Acknowledge & Activate Handover</span>
-                  </>
-                )}
-              </button>
-            </div>
-
           </div>
-
         </div>
       )}
 
