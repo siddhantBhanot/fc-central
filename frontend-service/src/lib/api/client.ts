@@ -34,6 +34,11 @@ import type {
   CustomerSummaryDTO,
   RelationshipBrief,
   TransitionActionItem,
+  CommitmentItem,
+  CommitmentStatus,
+  PreCallBriefing,
+  ManagementSummary,
+  AskSaathiResponse,
   User,
 } from '@/types';
 
@@ -747,6 +752,72 @@ export class ApiClient {
     return this.fetch<{ status: string; message: string }>('/api/v1/saathi/reset-demo', {
       method: 'POST',
     });
+  }
+
+  /**
+   * Natural-Language Ask Saathi Q&A grounded in customer history
+   */
+  async askSaathi(customerId: string, question: string): Promise<AskSaathiResponse> {
+    return this.fetch<AskSaathiResponse>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/ask`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ question }),
+      }
+    );
+  }
+
+  /**
+   * Get 2-Minute Pre-Call Briefing
+   */
+  async getSaathiPreCallBrief(customerId: string): Promise<PreCallBriefing> {
+    return this.fetch<PreCallBriefing>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/pre-call-brief`
+    );
+  }
+
+  /**
+   * Get Executive Management Summary
+   */
+  async getSaathiManagementSummary(customerId: string): Promise<ManagementSummary> {
+    return this.fetch<ManagementSummary>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/management-summary`
+    );
+  }
+
+  /**
+   * Validate or evolve customer relationship memory fact
+   */
+  async validateSaathiFact(
+    customerId: string,
+    factId: string,
+    action: 'confirm' | 'update' | 'mark_irrelevant',
+    updatedText?: string
+  ): Promise<CustomerRelationship> {
+    return this.fetch<CustomerRelationship>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/facts/${encodeURIComponent(factId)}/validate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ action, updated_text: updatedText }),
+      }
+    );
+  }
+
+  /**
+   * Update tracked relationship commitment status
+   */
+  async updateSaathiCommitment(
+    customerId: string,
+    commitmentId: string,
+    status: CommitmentStatus
+  ): Promise<CommitmentItem> {
+    return this.fetch<CommitmentItem>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/commitments/${encodeURIComponent(commitmentId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }
+    );
   }
 }
 

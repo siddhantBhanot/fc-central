@@ -12,10 +12,16 @@ from backend_service.app.domain.models.saathi import (
     RelationshipBrief,
     CustomerFeedbackRequest,
     UpdateActionStatusRequest,
+    UpdateCommitmentStatusRequest,
     TriggerHandoverRequest,
     TransitionActionItem,
+    CommitmentItem,
+    AskSaathiRequest,
+    AskSaathiResponse,
+    ValidateFactRequest,
+    PreCallBriefing,
+    ManagementSummary,
 )
-from backend_service.app.api.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,7 @@ async def get_customer_relationship(
     saathi_service: SaathiService = Depends(get_saathi_service),
 ) -> CustomerRelationship:
     """
-    Retrieve full relationship profile, history, brief, and active handover items.
+    Retrieve full relationship profile, history, brief, commitments, facts, and timeline.
     """
     customer = saathi_service.get_customer(customer_id)
     if not customer:
@@ -65,6 +71,101 @@ async def synthesize_relationship_brief(
     except Exception as e:
         logger.error(f"Failed to synthesize Saathi brief: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/customers/{customer_id}/ask", response_model=AskSaathiResponse)
+async def ask_saathi_question(
+    customer_id: str,
+    payload: AskSaathiRequest,
+    saathi_service: SaathiService = Depends(get_saathi_service),
+) -> AskSaathiResponse:
+    """
+    Natural-Language 'Ask Saathi':
+    Ask questions grounded in customer history, distinguishing confirmed commitments
+    from discussed possibilities.
+    """
+    try:
+        return await saathi_service.ask_saathi(customer_id=customer_id, question=payload.question)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to process Ask Saathi query: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/customers/{customer_id}/pre-call-brief", response_model=PreCallBriefing)
+async def get_pre_call_brief(
+    customer_id: str,
+    saathi_service: SaathiService = Depends(get_saathi_service),
+) -> PreCallBriefing:
+    """
+    'What Should I Know Before I Call?': 2-minute actionable pre-call briefing.
+    """
+    brief = saathi_service.get_pre_call_brief(customer_id)
+    if not brief:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pre-call briefing for '{customer_id}' not found.",
+        )
+    return brief
+
+
+@router.get("/customers/{customer_id}/management-summary", response_model=ManagementSummary)
+async def get_management_summary(
+    customer_id: str,
+    saathi_service: SaathiService = Depends(get_saathi_service),
+) -> ManagementSummary:
+    """
+    Executive Management Summary: High-level overview for leadership.
+    """
+    summary = saathi_service.get_management_summary(customer_id)
+    if not summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Management summary for '{customer_id}' not found.",
+        )
+    return summary
+
+
+@router.post("/customers/{customer_id}/facts/{fact_id}/validate", response_model=CustomerRelationship)
+async def validate_customer_fact(
+    customer_id: str,
+    fact_id: str,
+    payload: ValidateFactRequest,
+    saathi_service: SaathiService = Depends(get_saathi_service),
+) -> CustomerRelationship:
+    """
+    Customer Validation: Confirm, update, or mark a fact as no longer relevant.
+    """
+    try:
+        return saathi_service.validate_customer_fact(
+            customer_id=customer_id,
+            fact_id=fact_id,
+            action=payload.action,
+            updated_text=payload.updated_text,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.patch("/customers/{customer_id}/commitments/{commitment_id}", response_model=CommitmentItem)
+async def update_customer_commitment(
+    customer_id: str,
+    commitment_id: str,
+    payload: UpdateCommitmentStatusRequest,
+    saathi_service: SaathiService = Depends(get_saathi_service),
+) -> CommitmentItem:
+    """
+    Update status of a tracked relationship commitment.
+    """
+    try:
+        return saathi_service.update_commitment_status(
+            customer_id=customer_id,
+            commitment_id=commitment_id,
+            new_status=payload.status,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.post("/customers/{customer_id}/customer-feedback", response_model=CustomerRelationship)

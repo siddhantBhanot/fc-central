@@ -382,6 +382,11 @@ export type TransitionStatus =
 export type ActionPriority = 'high' | 'medium' | 'low';
 export type ActionStatus = 'pending' | 'in_progress' | 'completed';
 
+export type CommitmentType = 'confirmed_commitment' | 'discussed_possibility';
+export type CommitmentStatus = 'pending' | 'in_progress' | 'overdue' | 'completed';
+export type HealthLevel = 'stable' | 'attention_required' | 'immediate_attention';
+export type CustomerFactStatus = 'confirmed' | 'updated' | 'no_longer_relevant';
+
 export interface CRMInteraction {
   id: string;
   date: string;
@@ -402,6 +407,75 @@ export interface TransitionActionItem {
   assigned_to: string;
 }
 
+export interface CommitmentItem {
+  id: string;
+  title: string;
+  details: string;
+  committed_by: string;
+  committed_on: string;
+  commitment_type: CommitmentType;
+  status: CommitmentStatus;
+  urgency: ActionPriority;
+  source_interaction_id?: string | null;
+  evidence_snippet?: string | null;
+}
+
+export interface RelationshipTimelineEvent {
+  id: string;
+  year: string;
+  date_display: string;
+  title: string;
+  description: string;
+  category: string;
+  source_channel?: string | null;
+  interaction_id?: string | null;
+}
+
+export interface ContradictionAlert {
+  id: string;
+  title: string;
+  description: string;
+  detected_date: string;
+  previous_record: string;
+  recent_record: string;
+  recommendation: string;
+}
+
+export interface CustomerFact {
+  id: string;
+  statement: string;
+  category: string;
+  status: CustomerFactStatus;
+  updated_note?: string | null;
+  last_updated: string;
+}
+
+export interface RelationshipHealth {
+  level: HealthLevel;
+  headline: string;
+  reasons: string[];
+}
+
+export interface PreCallBriefing {
+  who_is_customer: string;
+  what_matters: string[];
+  current_discussions: string[];
+  what_we_owe: string[];
+  unresolved_issues: string[];
+  follow_up_items: string[];
+  sensitive_nuances: string[];
+  recommended_approach: string;
+}
+
+export interface ManagementSummary {
+  client_snapshot: string;
+  aum_and_tier: string;
+  active_opportunities: string[];
+  risk_and_unresolved: string[];
+  rm_handover_status: string;
+  executive_notes: string;
+}
+
 export interface RelationshipBrief {
   client_sentiment: string;
   executive_summary: string;
@@ -411,6 +485,13 @@ export interface RelationshipBrief {
   key_discussion_topics: string[];
   conversation_starter: string;
   talking_points: string[];
+  customer_priorities?: string[];
+  explicit_preferences?: string[];
+  current_conversations?: string[];
+  open_threads?: string[];
+  customer_concerns?: string[];
+  dont_repeat_items?: string[];
+  important_context?: string[];
   synthesized_at: string;
 }
 
@@ -442,6 +523,13 @@ export interface CustomerRelationship {
   transition_date: string;
   interactions: CRMInteraction[];
   action_items: TransitionActionItem[];
+  commitments?: CommitmentItem[];
+  timeline?: RelationshipTimelineEvent[];
+  contradictions?: ContradictionAlert[];
+  facts?: CustomerFact[];
+  health?: RelationshipHealth | null;
+  pre_call_brief?: PreCallBriefing | null;
+  management_summary?: ManagementSummary | null;
   brief?: RelationshipBrief | null;
   feedback?: CustomerFeedback | null;
 }
@@ -460,6 +548,27 @@ export interface CustomerSummaryDTO {
   transition_date: string;
   avatar_color: string;
   pending_actions_count: number;
+  health_level?: HealthLevel;
+  open_commitments_count?: number;
+  contradictions_count?: number;
+}
+
+export interface AskEvidenceItem {
+  date: string;
+  channel: string;
+  rm_name: string;
+  snippet: string;
+  commitment_type?: string | null;
+}
+
+export interface AskSaathiResponse {
+  question: string;
+  answer: string;
+  is_commitment: boolean;
+  commitment_type?: string | null;
+  evidence: AskEvidenceItem[];
+  confidence: string;
+  drilldown_context?: string | null;
 }
 
 

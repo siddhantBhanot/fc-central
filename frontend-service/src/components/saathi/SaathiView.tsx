@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Loader2,
   RotateCcw,
+  Search,
   Sparkles,
   User,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ export const SaathiView: React.FC = () => {
   const [customerSummaries, setCustomerSummaries] = useState<CustomerSummaryDTO[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [activeCustomer, setActiveCustomer] = useState<CustomerRelationship | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
@@ -104,6 +106,13 @@ export const SaathiView: React.FC = () => {
     await loadCustomers();
   };
 
+  const handleRefreshCustomer = async () => {
+    if (selectedCustomerId) {
+      await loadCustomerDetail(selectedCustomerId);
+      await loadCustomers();
+    }
+  };
+
   const handleResetDemo = async () => {
     setIsResetting(true);
     try {
@@ -116,6 +125,18 @@ export const SaathiView: React.FC = () => {
       setIsResetting(false);
     }
   };
+
+  // Filtered customer summaries
+  const filteredCustomers = customerSummaries.filter((c) => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.city.toLowerCase().includes(q) ||
+      c.tier.toLowerCase().includes(q) ||
+      c.account_number_masked.toLowerCase().includes(q)
+    );
+  });
 
   if (isLoading) {
     return (
@@ -141,19 +162,19 @@ export const SaathiView: React.FC = () => {
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-semibold tracking-wider text-rose-100 uppercase">
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Customer Delight & RM Handover Continuity</span>
+              <span>Customer Relationship Continuity Workspace</span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white leading-tight">
               Saathi <span className="text-rose-200 font-normal">| साथी</span>
             </h1>
 
-            <p className="text-sm text-rose-100/90 leading-relaxed font-medium">
-              “A relationship that stays, even when people change.”
+            <p className="text-sm text-rose-100/90 leading-relaxed font-semibold">
+              “When an RM changes, the customer should not feel like they are starting from zero.”
             </p>
 
             <p className="text-xs text-rose-200/80 leading-relaxed">
-              When an RM resigns, transfers, or changes roles, Axis automatically activates the Relationship Continuity journey. We turn years of scattered CRM interactions into an AI Relationship Brief, verify priorities with the customer, and ensure zero dropped requests.
+              The relationship belongs to the bank, not to an individual RM. Saathi preserves years of preferences, commitments, family context, and open threads, so the new RM steps in fully informed and the customer feels remembered.
             </p>
           </div>
 
@@ -161,11 +182,11 @@ export const SaathiView: React.FC = () => {
           <div className="flex flex-col sm:flex-row md:flex-col items-start md:items-end gap-3 shrink-0">
             <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-2xl px-4 py-2.5 backdrop-blur-xs">
               <div className="w-8 h-8 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center font-black text-xs">
-                40%
+                100%
               </div>
               <div className="text-left">
-                <span className="text-[10px] text-rose-200 uppercase font-bold block">Industry RM Attrition</span>
-                <span className="text-xs font-bold text-white">Safeguarded by Saathi</span>
+                <span className="text-[10px] text-rose-200 uppercase font-bold block">Relationship Memory</span>
+                <span className="text-xs font-bold text-white">Preserved on Transfer</span>
               </div>
             </div>
 
@@ -191,20 +212,42 @@ export const SaathiView: React.FC = () => {
         </div>
       </div>
 
-      {/* Customer Transition Selector Tabs */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-            Active Customer Transitions ({customerSummaries.length})
-          </span>
-          <span className="text-[11px] text-slate-500">
-            Select a customer to view their continuity brief and handover dashboard
-          </span>
+      {/* Customer Selection & Search (Section 4) */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div>
+            <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] block">
+              Active Customer Transitions ({customerSummaries.length})
+            </span>
+            <span className="text-[11px] text-[#97144d] font-semibold">
+              “This is everything you need to know to continue this relationship.”
+            </span>
+          </div>
+
+          {/* Search Input */}
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, city, or tier..."
+              className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#97144d]/20 focus:border-[#97144d] transition-all"
+            />
+          </div>
         </div>
 
+        {/* Customer Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {customerSummaries.map((c) => {
+          {filteredCustomers.map((c) => {
             const isSelected = selectedCustomerId === c.id;
+            const healthColor =
+              c.health_level === 'immediate_attention'
+                ? 'bg-rose-500'
+                : c.health_level === 'attention_required'
+                ? 'bg-amber-500'
+                : 'bg-emerald-500';
+
             return (
               <button
                 key={c.id}
@@ -223,10 +266,11 @@ export const SaathiView: React.FC = () => {
                       {c.name.charAt(0)}
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-slate-900 leading-tight">
-                        {c.name}
+                      <h4 className="text-xs font-bold text-slate-900 leading-tight flex items-center gap-1.5">
+                        <span>{c.name}</span>
+                        <span className={`w-2 h-2 rounded-full ${healthColor}`} title={`Health: ${c.health_level}`} />
                       </h4>
-                      <span className="text-[10px] text-slate-500">{c.city}</span>
+                      <span className="text-[10px] text-slate-500">{c.city} • {c.account_number_masked}</span>
                     </div>
                   </div>
 
@@ -245,9 +289,14 @@ export const SaathiView: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
                   <span className="font-semibold text-slate-800">{c.aum_display}</span>
-                  <span className="text-[10px] font-bold text-slate-400">
-                    {c.pending_actions_count} actions pending
-                  </span>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className="font-bold text-slate-500">
+                      {c.open_commitments_count || c.pending_actions_count} commitments
+                    </span>
+                    {c.contradictions_count ? (
+                      <span className="text-amber-600 font-bold">⚠️ alert</span>
+                    ) : null}
+                  </div>
                 </div>
 
                 {isSelected && (
@@ -267,12 +316,13 @@ export const SaathiView: React.FC = () => {
           onUpdateActionStatus={handleUpdateActionStatus}
           onSynthesizeBrief={handleSynthesizeBrief}
           onCompleteHandover={handleCompleteHandover}
+          onRefreshCustomer={handleRefreshCustomer}
           isSynthesizing={isSynthesizing}
           isCompletingHandover={isCompletingHandover}
         />
       ) : (
         <div className="p-12 text-center text-xs text-slate-400 bg-white rounded-3xl border border-slate-200">
-          Select a customer to view the Saathi Relationship Brief.
+          Select a customer to view the Saathi Relationship Continuity Workspace.
         </div>
       )}
 
@@ -283,6 +333,7 @@ export const SaathiView: React.FC = () => {
           isOpen={isCustomerModalOpen}
           onClose={() => setIsCustomerModalOpen(false)}
           onSubmitFeedback={handleSubmitCustomerFeedback}
+          onFactValidated={handleRefreshCustomer}
         />
       )}
 
