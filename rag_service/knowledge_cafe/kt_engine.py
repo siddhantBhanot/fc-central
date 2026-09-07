@@ -47,6 +47,44 @@ class KTEngine:
             return None
         return course.to_dict()
 
+    def _build_lesson_context(
+        self,
+        course_id: str,
+        lesson_id: str,
+        lesson_summary: str,
+        service: str,
+        max_total_chars: int = 15000,
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        file_contents = self.course_loader.read_lesson_context_files(course_id, lesson_id)
+        if not file_contents:
+            return f"Overview: {lesson_summary}", []
+
+        total_chars = sum(len(c) for _, c in file_contents)
+        context_blocks = []
+        sources = []
+        num_files = len(file_contents)
+
+        for file_name, content in file_contents:
+            if total_chars > max_total_chars:
+                per_file_budget = max(3500, max_total_chars // num_files)
+                if len(content) > per_file_budget:
+                    trimmed = content[:per_file_budget] + "\n\n... [Remaining operational sections condensed for context window] ..."
+                else:
+                    trimmed = content
+            else:
+                trimmed = content
+
+            context_blocks.append(f"=== File: {file_name} ===\n{trimmed}\n")
+            sources.append({
+                "file": file_name,
+                "service": service,
+                "doc_type": "course_context",
+                "snippet": content[:200] + "..." if len(content) > 200 else content,
+            })
+
+        context_text = "\n---------------------\n".join(context_blocks)
+        return context_text, sources
+
     async def synthesize_lesson(
         self,
         course_id: str,
@@ -71,23 +109,13 @@ class KTEngine:
         if not lesson:
             raise ValueError(f"Lesson '{lesson_id}' not found in course '{course_id}'.")
 
-        # 1. Read dedicated context files for this lesson
-        file_contents = self.course_loader.read_lesson_context_files(course_id, lesson_id)
-        if not file_contents:
-            context_text = f"Overview: {lesson.summary}"
-            sources = []
-        else:
-            context_blocks = []
-            sources = []
-            for file_name, content in file_contents:
-                context_blocks.append(f"=== File: {file_name} ===\n{content}\n")
-                sources.append({
-                    "file": file_name,
-                    "service": course.target_service,
-                    "doc_type": "course_context",
-                    "snippet": content[:200] + "..." if len(content) > 200 else content,
-                })
-            context_text = "\n---------------------\n".join(context_blocks)
+        # 1. Read dedicated context files for this lesson with safety token budget
+        context_text, sources = self._build_lesson_context(
+            course_id=course_id,
+            lesson_id=lesson_id,
+            lesson_summary=lesson.summary,
+            service=course.target_service,
+        )
 
         # 2. Render prompt
         prev_summary_text = previous_summary or "This is the first lesson of the course."
@@ -290,23 +318,13 @@ class KTEngine:
         if not lesson:
             raise ValueError(f"Lesson '{lesson_id}' not found in course '{course_id}'.")
 
-        # 1. Read dedicated context files for this lesson
-        file_contents = self.course_loader.read_lesson_context_files(course_id, lesson_id)
-        if not file_contents:
-            context_text = f"Overview: {lesson.summary}"
-            sources = []
-        else:
-            context_blocks = []
-            sources = []
-            for file_name, content in file_contents:
-                context_blocks.append(f"=== File: {file_name} ===\n{content}\n")
-                sources.append({
-                    "file": file_name,
-                    "service": course.id,
-                    "doc_type": "course_context",
-                    "snippet": content[:200] + "..." if len(content) > 200 else content,
-                })
-            context_text = "\n---------------------\n".join(context_blocks)
+        # 1. Read dedicated context files for this lesson with safety token budget
+        context_text, sources = self._build_lesson_context(
+            course_id=course_id,
+            lesson_id=lesson_id,
+            lesson_summary=lesson.summary,
+            service=course.target_service,
+        )
 
         # 2. Render prompt
         prev_summary_text = previous_summary or "This is the first lesson of the course."

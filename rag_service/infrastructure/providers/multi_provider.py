@@ -1,5 +1,5 @@
 import logging
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from rag_service.domain.models import LLMResponse, Message
 from rag_service.domain.protocols import LLMProvider
@@ -60,6 +60,24 @@ class MultiProviderLLMAdapter:
         # Fallback to default configured provider
         return self.default_provider
 
+    def _get_candidate_providers(self, model: Optional[str]) -> List[Tuple[LLMProvider, Optional[str]]]:
+        """
+        Build an ordered list of (provider, model_id) candidates for failover.
+        The primary resolved provider is first; remaining providers are fallbacks.
+        """
+        primary = self._resolve_provider(model)
+        candidates: List[Tuple[LLMProvider, Optional[str]]] = [(primary, model)]
+        
+        # Add remaining registered providers
+        for p_name, provider in self.providers.items():
+            if provider is not primary and all(provider is not c[0] for c in candidates):
+                candidates.append((provider, None))
+                
+        if all(self.default_provider is not c[0] for c in candidates):
+            candidates.append((self.default_provider, None))
+            
+        return candidates
+
     async def generate(
         self,
         messages: List[Message],
@@ -69,15 +87,30 @@ class MultiProviderLLMAdapter:
         model: Optional[str] = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        provider = self._resolve_provider(model)
-        return await provider.generate(
-            messages=messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            model=model,
-            **kwargs,
-        )
+        candidates = self._get_candidate_providers(model)
+        last_err: Optional[Exception] = None
+
+        for idx, (provider, candidate_model) in enumerate(candidates):
+            try:
+                return await provider.generate(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=candidate_model,
+                    **kwargs,
+                )
+            except Exception as e:
+                p_name = provider.__class__.__name__
+                logger.warning(
+                    f"LLM provider {p_name} (candidate #{idx+1}) failed during generate: {e}. "
+                    f"Attempting fallback to next available provider..."
+                )
+                last_err = e
+
+        if last_err:
+            raise last_err
+        raise RuntimeError("No LLM provider available.")
 
     async def stream(
         self,
@@ -88,13 +121,37 @@ class MultiProviderLLMAdapter:
         model: Optional[str] = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        provider = self._resolve_provider(model)
-        async for chunk in provider.stream(
-            messages=messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            model=model,
-            **kwargs,
-        ):
-            yield chunk
+        candidates = self._get_candidate_providers(model)
+        last_err: Optional[Exception] = None
+
+        for idx, (provider, candidate_model) in enumerate(candidates):
+            try:
+                iterator = provider.stream(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=candidate_model,
+                    **kwargs,
+                )
+                first_chunk = None
+                async for chunk in iterator:
+                    first_chunk = chunk
+                    yield chunk
+                    break
+
+                if first_chunk is not None:
+                    async for chunk in iterator:
+                        yield chunk
+                    return
+            except Exception as e:
+                p_name = provider.__class__.__name__
+                logger.warning(
+                    f"LLM provider {p_name} (candidate #{idx+1}) failed during stream: {e}. "
+                    f"Attempting fallback to next available provider..."
+                )
+                last_err = e
+
+        if last_err:
+            raise last_err
+        raise RuntimeError("No LLM provider available.")
