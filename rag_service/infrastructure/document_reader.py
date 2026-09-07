@@ -6,7 +6,7 @@ from typing import Optional, Set
 from rag_service.domain.models import DocumentContent
 
 
-ALLOWED_DOC_EXTENSIONS: Set[str] = {".md", ".markdown", ".txt", ".rst", ".pdf"}
+ALLOWED_DOC_EXTENSIONS: Set[str] = {".md", ".markdown", ".txt", ".rst", ".pdf", ".kt", ".kts"}
 SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
@@ -136,7 +136,12 @@ class DocumentReader:
                 content_type = "text/plain"
         else:
             content = target_path.read_text(encoding="utf-8", errors="replace")
-            content_type = "text/markdown" if suffix in [".md", ".markdown"] else "text/plain"
+            if suffix in [".kt", ".kts"]:
+                content_type = "text/x-kotlin"
+            elif suffix in [".md", ".markdown"]:
+                content_type = "text/markdown"
+            else:
+                content_type = "text/plain"
 
         total_lines = len(content.splitlines())
         size_bytes = target_path.stat().st_size

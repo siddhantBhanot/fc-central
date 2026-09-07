@@ -107,13 +107,14 @@ class KTEngine:
         system_prompt = (
             f"You are an expert Principal Engineer delivering an authoritative, engaging Knowledge Transfer "
             f"masterclass on '{course.title}'. Teach with exceptional technical clarity, clean formatting, "
-            f"and strict adherence to the provided course documentation."
+            f"and strict adherence to the provided course documentation. "
+            f"Strict Grounding Rule: Never fabricate, extrapolate, or hallucinate sample scripts (such as Jenkinsfiles, Groovy scripts, or code), parameters, or steps that are not explicitly present in the provided context."
         )
 
         llm_response = await self.llm_provider.generate(
             messages=messages,
             system_prompt=system_prompt,
-            temperature=0.2,
+            temperature=0.0,
             model=model,
         )
 
@@ -187,7 +188,7 @@ class KTEngine:
                     seen_files.add(fn)
                     sources.append({
                         "file": fn,
-                        "service": course.target_service,
+                        "service": course.id,
                         "doc_type": "course_context",
                         "snippet": chunk.content[:200] + "..." if len(chunk.content) > 200 else chunk.content,
                     })
@@ -203,7 +204,7 @@ class KTEngine:
                 context_blocks.append(f"=== Lesson Context: {file_name} ===\n{content}\n")
                 sources.append({
                     "file": file_name,
-                    "service": course.target_service,
+                    "service": course.id,
                     "doc_type": "course_context",
                     "snippet": content[:200] + "..." if len(content) > 200 else content,
                 })
@@ -246,13 +247,14 @@ class KTEngine:
         messages = [Message(role=MessageRole.USER, content=prompt_content)]
         system_prompt = (
             f"You are a Principal Engineer mentoring a developer during a Knowledge Transfer session for "
-            f"'{course.title}'. Answer doubts accurately and concisely using the provided context."
+            f"'{course.title}'. Answer doubts strictly and concisely using ONLY the provided course documentation. "
+            f"Strict Grounding: Never fabricate, extrapolate, or hallucinate sample scripts (such as Jenkinsfiles, Groovy scripts, or code), parameters, or steps that are not explicitly present in the provided context."
         )
 
         llm_response = await self.llm_provider.generate(
             messages=messages,
             system_prompt=system_prompt,
-            temperature=0.2,
+            temperature=0.0,
             model=model,
         )
 
@@ -300,7 +302,7 @@ class KTEngine:
                 context_blocks.append(f"=== File: {file_name} ===\n{content}\n")
                 sources.append({
                     "file": file_name,
-                    "service": course.target_service,
+                    "service": course.id,
                     "doc_type": "course_context",
                     "snippet": content[:200] + "..." if len(content) > 200 else content,
                 })
@@ -324,13 +326,14 @@ class KTEngine:
         system_prompt = (
             f"You are an expert Principal Engineer delivering an authoritative, engaging Knowledge Transfer "
             f"masterclass on '{course.title}'. Teach with exceptional technical clarity, clean formatting, "
-            f"and strict adherence to the provided course documentation."
+            f"and strict adherence to the provided course documentation. "
+            f"Strict Grounding Rule: Never fabricate, extrapolate, or hallucinate sample scripts (such as Jenkinsfiles, Groovy scripts, or code), parameters, or steps that are not explicitly present in the provided context."
         )
 
         stream_iter = self.llm_provider.stream(
             messages=messages,
             system_prompt=system_prompt,
-            temperature=0.2,
+            temperature=0.0,
             model=model,
         )
 
@@ -378,13 +381,14 @@ class KTEngine:
         messages = [Message(role=MessageRole.USER, content=prompt_content)]
         system_prompt = (
             f"You are a Principal Engineer mentoring a developer during a Knowledge Transfer session for "
-            f"'{course.title}'. Answer doubts accurately and concisely using the provided context."
+            f"'{course.title}'. Answer doubts strictly and concisely using ONLY the provided course documentation. "
+            f"Strict Grounding: Never fabricate, extrapolate, or hallucinate sample scripts (such as Jenkinsfiles, Groovy scripts, or code), parameters, or steps that are not explicitly present in the provided context."
         )
 
         stream_iter = self.llm_provider.stream(
             messages=messages,
             system_prompt=system_prompt,
-            temperature=0.2,
+            temperature=0.0,
             model=model,
         )
 

@@ -433,9 +433,9 @@ class DirectRAGClient(RAGClientProtocol):
 
         safe_name = Path(file_name).name
         suffix = Path(safe_name).suffix.lower()
-        if suffix not in {".md", ".markdown", ".pdf", ".zip"}:
+        if suffix not in {".md", ".markdown", ".pdf", ".kt", ".kts", ".zip"}:
             raise ValueError(
-                f"Unsupported file format '{suffix}'. Supported formats: .md, .pdf, or .zip archive."
+                f"Unsupported file format '{suffix}'. Supported formats: .kt, .kts, .md, .pdf, or .zip archive."
             )
 
         pending_dir = _project_root / "rag_service" / "sample_data" / service / "pending"
@@ -454,20 +454,20 @@ class DirectRAGClient(RAGClientProtocol):
                         if p.is_absolute() or ".." in p.parts:
                             raise ValueError(f"Malicious zip entry detected: {member.filename}")
 
-                    allowed_inner = {".md", ".markdown", ".pdf"}
+                    allowed_inner = {".md", ".markdown", ".pdf", ".kt", ".kts"}
                     for member in zf.infolist():
                         if member.is_dir():
                             continue
                         inner_path = Path(member.filename)
                         if inner_path.suffix.lower() in allowed_inner and not inner_path.name.startswith("."):
-                            dest_name = inner_path.name
-                            target_file = pending_dir / dest_name
+                            target_file = pending_dir / inner_path
+                            target_file.parent.mkdir(parents=True, exist_ok=True)
                             target_file.write_bytes(zf.read(member.filename))
-                            extracted_files.append(dest_name)
+                            extracted_files.append(str(inner_path))
 
                 if not extracted_files:
                     raise ValueError(
-                        "No valid .md or .pdf documentation files were found in the uploaded zip archive."
+                        "No valid Kotlin source (.kt, .kts), Markdown (.md), or PDF (.pdf) files were found in the uploaded zip archive."
                     )
 
                 return {
@@ -476,7 +476,7 @@ class DirectRAGClient(RAGClientProtocol):
                     "size_bytes": len(content_bytes),
                     "status": "pending",
                     "extracted_files_count": len(extracted_files),
-                    "message": f"Archive '{safe_name}' unpacked successfully. {len(extracted_files)} documentation file(s) staged under pending review. Ingestion not triggered.",
+                    "message": f"Archive '{safe_name}' unpacked successfully. {len(extracted_files)} source/documentation file(s) staged under pending review. Ingestion not triggered.",
                 }
             except zipfile.BadZipFile:
                 raise ValueError("Corrupted or invalid ZIP archive.")
@@ -507,55 +507,55 @@ class DirectRAGClient(RAGClientProtocol):
         if not service_dir.is_dir():
             return []
 
-        allowed_exts = {".md", ".markdown", ".pdf"}
+        def _get_format(sfx: str) -> str:
+            s = sfx.lower()
+            if s == ".pdf":
+                return "PDF"
+            if s in {".kt", ".kts"}:
+                return "KT"
+            return "MD"
+
+        allowed_exts = {".md", ".markdown", ".pdf", ".kt", ".kts"}
         results = []
 
-        # 1. Check pending directory
+        # 1. Check pending directory (recursive)
         pending_dir = service_dir / "pending"
         if pending_dir.is_dir():
-            for p in pending_dir.iterdir():
+            for p in pending_dir.rglob("*"):
                 if p.is_file() and p.suffix.lower() in allowed_exts:
                     stat = p.stat()
+                    rel_path = str(p.relative_to(service_dir))
                     results.append({
                         "name": p.name,
-                        "path": f"pending/{p.name}",
+                        "path": rel_path,
                         "service": service,
-                        "format": "PDF" if p.suffix.lower() == ".pdf" else "MD",
+                        "format": _get_format(p.suffix),
                         "size_bytes": stat.st_size,
                         "status": "pending",
                         "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
                     })
 
-        # 2. Check service root and docs/ directory for ingested documents
-        seen_names = set()
-        for p in service_dir.iterdir():
-            if p.is_file() and p.suffix.lower() in allowed_exts:
+        # 2. Check service root and subdirectories for ingested documents (excluding pending)
+        seen_paths = set()
+        for p in service_dir.rglob("*"):
+            if (
+                p.is_file()
+                and p.suffix.lower() in allowed_exts
+                and "pending" not in p.parts
+            ):
                 stat = p.stat()
-                results.append({
-                    "name": p.name,
-                    "path": p.name,
-                    "service": service,
-                    "format": "PDF" if p.suffix.lower() == ".pdf" else "MD",
-                    "size_bytes": stat.st_size,
-                    "status": "ingested",
-                    "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-                })
-                seen_names.add(p.name)
-
-        docs_dir = service_dir / "docs"
-        if docs_dir.is_dir():
-            for p in docs_dir.iterdir():
-                if p.is_file() and p.suffix.lower() in allowed_exts and p.name not in seen_names:
-                    stat = p.stat()
+                rel_path = str(p.relative_to(service_dir))
+                if rel_path not in seen_paths:
                     results.append({
                         "name": p.name,
-                        "path": f"docs/{p.name}",
+                        "path": rel_path,
                         "service": service,
-                        "format": "PDF" if p.suffix.lower() == ".pdf" else "MD",
+                        "format": _get_format(p.suffix),
                         "size_bytes": stat.st_size,
                         "status": "ingested",
                         "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
                     })
+                    seen_paths.add(rel_path)
 
         # Sort pending first, then by name
         results.sort(key=lambda x: (0 if x["status"] == "pending" else 1, x["name"].lower()))
@@ -595,15 +595,13 @@ class DirectRAGClient(RAGClientProtocol):
             # Promote pending files to target_dir before ingestion
             pending_dir = target_dir / "pending"
             if pending_dir.is_dir():
-                for p in pending_dir.iterdir():
-                    if p.is_file() and p.suffix.lower() in {".md", ".markdown", ".pdf"}:
-                        dest = target_dir / p.name
+                for p in list(pending_dir.rglob("*")):
+                    if p.is_file() and p.suffix.lower() in {".md", ".markdown", ".pdf", ".kt", ".kts"}:
+                        rel = p.relative_to(pending_dir)
+                        dest = target_dir / rel
+                        dest.parent.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(p), str(dest))
-                try:
-                    if not any(pending_dir.iterdir()):
-                        pending_dir.rmdir()
-                except Exception:
-                    pass
+                shutil.rmtree(pending_dir, ignore_errors=True)
 
             ingest_result = await self._ingestion.ingest_directory(target_dir, service=service)
             job.total_files = ingest_result.get("total_files", 0)

@@ -9,12 +9,14 @@ import {
   X,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
+import { SourceCitationList } from '@/components/chat/SourceCitationList';
 import type { LessonDoubt } from '@/types';
 
 interface LessonDoubtDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   lessonTitle: string;
+  courseId?: string;
   doubts: LessonDoubt[];
   onAskDoubt: (question: string) => Promise<void>;
   isAsking: boolean;
@@ -30,6 +32,7 @@ export function LessonDoubtDrawer({
   isOpen,
   onClose,
   lessonTitle,
+  courseId,
   doubts,
   onAskDoubt,
   isAsking,
@@ -122,7 +125,7 @@ export function LessonDoubtDrawer({
             </div>
           ) : (
             <div className="space-y-5">
-              {doubts.map((doubt) => (
+              {doubts.map((doubt, idx) => (
                 <div key={doubt.id} className="space-y-2">
                   {/* User Question */}
                   <div className="flex items-start gap-2.5 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
@@ -142,8 +145,15 @@ export function LessonDoubtDrawer({
                           <span>Synthesizing answer from course documentation...</span>
                         </div>
                       )}
-                      {isAsking && doubt.id.startsWith('doubt-') && doubt.answer && (
+                      {isAsking && idx === doubts.length - 1 && doubt.answer && (
                         <span className="inline-block w-1.5 h-3 ml-1 bg-[#f05a28] animate-pulse align-middle" />
+                      )}
+
+                      {/* Grounded Source Citations (as in dev chat) */}
+                      {doubt.sources && doubt.sources.length > 0 && (
+                        <div className="pt-2">
+                          <SourceCitationList sources={doubt.sources} service={courseId} />
+                        </div>
                       )}
                     </div>
                   </div>

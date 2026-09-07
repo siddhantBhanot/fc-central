@@ -191,6 +191,8 @@ export function KnowledgeCafeView({
       });
     }
 
+    let currentDoubtId = tempDoubtId;
+
     try {
       await apiClient.askLessonDoubtStream(
         activeCourseId,
@@ -199,6 +201,9 @@ export function KnowledgeCafeView({
         selectedModel,
         {
           onMetadata: (meta) => {
+            if (meta.doubt_id) {
+              currentDoubtId = meta.doubt_id;
+            }
             setActiveLesson((prev) => {
               if (!prev) return prev;
               return {
@@ -217,8 +222,8 @@ export function KnowledgeCafeView({
               return {
                 ...prev,
                 doubts: prev.doubts.map((d) =>
-                  d.id === tempDoubtId || (d.id.startsWith('doubt-') && !d.answer)
-                    ? { ...d, answer: d.answer + chunk }
+                  d.id === currentDoubtId || d.id === tempDoubtId || (d.id.startsWith('doubt-') && !d.answer)
+                    ? { ...d, answer: (d.answer || '') + chunk }
                     : d
                 ),
               };
@@ -231,7 +236,7 @@ export function KnowledgeCafeView({
               return {
                 ...prev,
                 doubts: prev.doubts.map((d) =>
-                  d.id === tempDoubtId || d.id === done.doubt.id
+                  d.id === currentDoubtId || d.id === tempDoubtId || d.id === done.doubt.id
                     ? done.doubt
                     : d
                 ),
@@ -357,6 +362,7 @@ export function KnowledgeCafeView({
         isOpen={isDoubtDrawerOpen}
         onClose={() => setIsDoubtDrawerOpen(false)}
         lessonTitle={activeLesson?.title || ''}
+        courseId={activeCourseId || ''}
         doubts={activeLesson?.doubts || []}
         onAskDoubt={handleAskDoubt}
         isAsking={isAskingDoubt}

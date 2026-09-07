@@ -45,13 +45,19 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
     const fetchDoc = async () => {
       try {
         let data: DocumentDetailResponse;
-        if (service.includes('-kt') || service === 'income-assessment-kt') {
+        if (
+          service.includes('-kt') ||
+          service.includes('pipelines') ||
+          service.includes('jenkins') ||
+          service.includes('course') ||
+          service === 'income-assessment-kt'
+        ) {
           data = await apiClient.getCourseDocument(service, file);
         } else {
           try {
             data = await apiClient.getDocument(service, file);
           } catch {
-            data = await apiClient.getCourseDocument('income-assessment-kt', file);
+            data = await apiClient.getCourseDocument(service, file);
           }
         }
         if (isMounted) {
@@ -256,7 +262,11 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
               {/* Document Rendering */}
               {viewMode === 'rendered' ? (
                 <div className="max-w-none">
-                  <MarkdownRenderer content={docData.content} />
+                  {fileName.toLowerCase().endsWith('.kt') || fileName.toLowerCase().endsWith('.kts') ? (
+                    <MarkdownRenderer content={`\`\`\`kotlin\n${docData.content}\n\`\`\``} />
+                  ) : (
+                    <MarkdownRenderer content={docData.content} />
+                  )}
                 </div>
               ) : (
                 <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-900 text-slate-100 text-xs font-mono p-4 overflow-x-auto leading-relaxed">

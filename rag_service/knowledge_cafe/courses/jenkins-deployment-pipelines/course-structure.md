@@ -25,12 +25,110 @@ tags:
 
 # Jenkins Deployment Pipelines
 
-## 01. Build Master and Other Branches
+## 01. Jenkins Basics
+
+- **Summary**: Core Jenkins concepts, why automation is used, and how pipelines, builds, stages, parameters, triggers, logs, and deployment flow work in company context.
+- **Context**:
+  - lessons/01-jenkins-basics/01-what-is-jenkins.md
+  - lessons/01-jenkins-basics/02-why-we-use-jenkins.md
+  - lessons/01-jenkins-basics/03-how-jenkins-works.md
+- **Knowledge Check**:
+  - **Question**: In simple terms, what is Jenkins used for?
+  - **Type**: multiple_choice
+  - **Options**:
+    - Source-control code storage
+    - [x] Automation of software delivery tasks
+    - Issue tracking workflow
+    - Manual deployment approvals
+  - **Explanation**: Jenkins is described as an automation tool for executing software delivery tasks consistently.
+- **Knowledge Check**:
+  - **Question**: Which sequence matches the simplified Jenkins flow from code to deployment?
+  - **Type**: multiple_choice
+  - **Options**:
+    - Deployment -> Checks -> Build -> Jenkins -> Source Code
+    - Source Code -> Build -> Jenkins -> Deployment -> Checks
+    - [x] Source Code -> Jenkins -> Build -> Checks -> Artifact / Image -> Deployment
+    - Source Code -> Deployment -> Jenkins -> Checks -> Artifact / Image
+  - **Explanation**: The lesson shows this exact top-to-bottom automation sequence.
+- **Knowledge Check**:
+  - **Question**: What is a Jenkins build?
+  - **Type**: multiple_choice
+  - **Options**:
+    - A static configuration file
+    - [x] One execution of a Jenkins job/pipeline
+    - A deployment-only environment
+    - A list of open defects
+  - **Explanation**: A build is one run of a specific pipeline and has a build number.
+- **Knowledge Check**:
+  - **Question**: What does a stage represent in a Jenkins pipeline?
+  - **Type**: multiple_choice
+  - **Options**:
+    - A full release train across products
+    - [x] A logical part of a pipeline
+    - A Git branch strategy document
+    - A production approval ticket
+  - **Explanation**: Stages are logical sections such as Checkout, Build, Quality Checks, and Security Checks.
+- **Knowledge Check**:
+  - **Question**: In company build pipelines, which parameter is especially important when triggering builds?
+  - **Type**: multiple_choice
+  - **Options**:
+    - Kubernetes namespace
+    - Build color theme
+    - [x] Branch to build
+    - Browser profile
+  - **Explanation**: The branch input is called out as a key parameter for the build pipeline.
+- **Knowledge Check**:
+  - **Question**: Which statement about Jenkins and Git/Bitbucket is correct?
+  - **Type**: multiple_choice
+  - **Options**:
+    - Jenkins replaces Git history and branching
+    - Git replaces Jenkins pipeline execution
+    - [x] Git/Bitbucket stores code; Jenkins executes automated workflows
+    - They are identical tools with different UI
+  - **Explanation**: Source control stores code and history, while Jenkins runs build/check/deploy automation.
+- **Knowledge Check**:
+  - **Question**: Which value does Jenkins provide by recording build numbers, parameters, Git information, and logs?
+  - **Type**: multiple_choice
+  - **Options**:
+    - UI customization
+    - Secret rotation
+    - [x] Traceability
+    - Manual rollback freeze
+  - **Explanation**: The lesson defines this as traceability.
+- **Knowledge Check**:
+  - **Question**: Which is listed as a common problem in a fully manual release process?
+  - **Type**: multiple_choice
+  - **Options**:
+    - Guaranteed stage consistency
+    - [x] Building the wrong branch
+    - Automatic quality checks every time
+    - Clear build history by default
+  - **Explanation**: The manual-process section explicitly lists building the wrong branch as a risk.
+- **Knowledge Check**:
+  - **Question**: Which build result status is shown in the Jenkins lifecycle examples?
+  - **Type**: multiple_choice
+  - **Options**:
+    - PARTIAL
+    - CANCELLED-LATE
+    - [x] ABORTED
+    - REPLACED
+  - **Explanation**: SUCCESS, FAILED, and ABORTED are explicitly listed.
+- **Knowledge Check**:
+  - **Question**: In the master branch deployment flow, what comes immediately after SIT Deployment?
+  - **Type**: multiple_choice
+  - **Options**:
+    - Version Manifest
+    - QA Deployment
+    - [x] Smoke Test
+    - Security Checks
+  - **Explanation**: The shown sequence is Version Manifest -> SIT Deployment -> Smoke Test -> QA Deployment.
+
+## 02. Build Master and Other Branches
 
 - **Summary**: Build pipelines for UI and backend services, Build With Parameters, branch selection, and master and other branch behavior.
 - **Context**:
-  - lessons/01-build-master-and-other-branches/01-build-pipeline-overview.md
-  - lessons/01-build-master-and-other-branches/02-build-with-parameters-and-branch-behavior.md
+  - lessons/02-build-master-and-other-branches/01-build-pipeline-overview.md
+  - lessons/02-build-master-and-other-branches/02-build-with-parameters-and-branch-behavior.md
 - **Knowledge Check**:
   - **Question**: Which Jenkins option is used to start a parameterized service build?
   - **Type**: multiple_choice
@@ -122,12 +220,12 @@ tags:
     - Neither produces deployable outputs
   - **Explanation**: Master participates in promotion flow, while other branches generally generate reusable images.
 
-## 02. Build Verification and Build Failure Checks
+## 03. Build Verification and Build Failure Checks
 
 - **Summary**: Last commit verification, image format, Kubernetes.container_image verification, build failures, and Jenkins build options.
 - **Context**:
-  - lessons/02-build-verification-and-failure-checks/01-build-verification.md
-  - lessons/02-build-verification-and-failure-checks/02-build-failure-and-build-options.md
+  - lessons/03-build-verification-and-failure-checks/01-build-verification.md
+  - lessons/03-build-verification-and-failure-checks/02-build-failure-and-build-options.md
 - **Knowledge Check**:
   - **Question**: What can be searched in console output to confirm a build against source history?
   - **Type**: multiple_choice
@@ -219,11 +317,11 @@ tags:
     - [x] Aborted
   - **Explanation**: Aborted indicates execution was stopped before normal completion.
 
-## 03. Master Branch Build Flow
+## 04. Master Branch Build Flow
 
 - **Summary**: Master build, version manifest, SIT deployment, SIT smoke test, and QA deployment.
 - **Context**:
-  - lessons/03-master-branch-build-flow/01-master-branch-build-flow.md
+  - lessons/04-master-branch-build-flow/01-master-branch-build-flow.md
 - **Knowledge Check**:
   - **Question**: After smoke tests pass successfully, where is the build promoted?
   - **Type**: multiple_choice
@@ -315,12 +413,12 @@ tags:
     - Master build -> PROD deploy -> QA deploy -> SIT deploy
   - **Explanation**: The flow follows manifest generation, SIT deployment, smoke validation, then QA promotion.
 
-## 04. SIT, SIT1, QA, QA1, PERF, and prodSanbox Deployment
+## 05. SIT, SIT1, QA, QA1, PERF, and prodSanbox Deployment
 
 - **Summary**: Deployment pipelines, deployment parameters, and upstream values for SIT, SIT1, QA, QA1, PERF, and prodSanbox.
 - **Context**:
-  - lessons/04-environment-deployment/01-deployment-pipelines-and-parameters.md
-  - lessons/04-environment-deployment/02-upstream-environment-values.md
+  - lessons/05-environment-deployment/01-deployment-pipelines-and-parameters.md
+  - lessons/05-environment-deployment/02-upstream-environment-values.md
 - **Knowledge Check**:
   - **Question**: What does `upstream_environment` define?
   - **Type**: multiple_choice
@@ -412,12 +510,12 @@ tags:
     - See Fingerprints
   - **Explanation**: Deployments are started using BUILD WITH PARAMATERS on the deploy pipelines.
 
-## 05. Sandbox, Sandbox1, UAT, and All Release Deployment
+## 06. Sandbox, Sandbox1, UAT, and All Release Deployment
 
 - **Summary**: Deployment parameters and upstream values for Sandbox, Sandbox1, and UAT, plus all-release pipeline behavior.
 - **Context**:
-  - lessons/05-sandbox-uat-and-all-release/01-sandbox-sandbox1-and-uat-deployment.md
-  - lessons/05-sandbox-uat-and-all-release/02-all-release-deployment.md
+  - lessons/06-sandbox-uat-and-all-release/01-sandbox-sandbox1-and-uat-deployment.md
+  - lessons/06-sandbox-uat-and-all-release/02-all-release-deployment.md
 - **Knowledge Check**:
   - **Question**: Which pipeline can also be used to deploy on UAT and is used for PROD as well?
   - **Type**: multiple_choice
@@ -509,12 +607,12 @@ tags:
     - SIT smoke rerun
   - **Explanation**: The flow notes Infra team approval is required when it reaches PREPROD.
 
-## 06. Seed Deployment
+## 07. Seed Deployment
 
 - **Summary**: Seed content, seed build branches, and Seed deployment parameters for SIT, SIT1, QA, QA1, PERF, SANDBOX, SANDBOX1, UAT, and PROD.
 - **Context**:
-  - lessons/06-seed-deployment/01-seed-overview-and-build.md
-  - lessons/06-seed-deployment/02-seed-environment-deployment.md
+  - lessons/07-seed-deployment/01-seed-overview-and-build.md
+  - lessons/07-seed-deployment/02-seed-environment-deployment.md
 - **Knowledge Check**:
   - **Question**: What does Seed contain?
   - **Type**: multiple_choice

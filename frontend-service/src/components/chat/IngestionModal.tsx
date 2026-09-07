@@ -134,8 +134,15 @@ export function IngestionModal({
     if (e.target.files && e.target.files.length > 0) {
       const f = e.target.files[0];
       const ext = f.name.toLowerCase();
-      if (!ext.endsWith('.md') && !ext.endsWith('.markdown') && !ext.endsWith('.pdf') && !ext.endsWith('.zip')) {
-        setDocError('Supported formats: .md, .pdf, or a .zip folder containing documentation.');
+      const isAllowed =
+        ext.endsWith('.md') ||
+        ext.endsWith('.markdown') ||
+        ext.endsWith('.pdf') ||
+        ext.endsWith('.kt') ||
+        ext.endsWith('.kts') ||
+        ext.endsWith('.zip');
+      if (!isAllowed) {
+        setDocError('Supported formats: Kotlin source (.kt, .kts), Markdown (.md), PDF (.pdf), or .zip archive of source/docs.');
         return;
       }
       setSelectedDocFile(f);
@@ -347,8 +354,15 @@ export function IngestionModal({
                 if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                   const f = e.dataTransfer.files[0];
                   const ext = f.name.toLowerCase();
-                  if (!ext.endsWith('.md') && !ext.endsWith('.markdown') && !ext.endsWith('.pdf') && !ext.endsWith('.zip')) {
-                    setDocError('Supported formats: .md, .pdf, or a .zip folder containing documentation.');
+                  const isAllowed =
+                    ext.endsWith('.md') ||
+                    ext.endsWith('.markdown') ||
+                    ext.endsWith('.pdf') ||
+                    ext.endsWith('.kt') ||
+                    ext.endsWith('.kts') ||
+                    ext.endsWith('.zip');
+                  if (!isAllowed) {
+                    setDocError('Supported formats: Kotlin source (.kt, .kts), Markdown (.md), PDF (.pdf), or .zip archive of source/docs.');
                     return;
                   }
                   setSelectedDocFile(f);
@@ -365,7 +379,7 @@ export function IngestionModal({
               <input
                 ref={docFileInputRef}
                 type="file"
-                accept=".md,.markdown,.pdf,.zip"
+                accept=".md,.markdown,.pdf,.kt,.kts,.zip"
                 onChange={handleDocFileSelect}
                 className="hidden"
                 id="doc-file-input"
@@ -384,7 +398,7 @@ export function IngestionModal({
                   <span className="text-xs text-slate-500"> or drag and drop your file or zip folder</span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Supported formats: <strong className="text-slate-600">Markdown (.md)</strong>, <strong className="text-slate-600">PDF (.pdf)</strong>, or <strong className="text-slate-600">Zipped Docs Folder (.zip)</strong>
+                  Supported formats: <strong className="text-slate-600">Kotlin (.kt, .kts)</strong>, <strong className="text-slate-600">Markdown (.md)</strong>, <strong className="text-slate-600">PDF (.pdf)</strong>, or <strong className="text-slate-600">Zipped Source/Docs (.zip)</strong>
                 </p>
               </div>
 
@@ -393,6 +407,8 @@ export function IngestionModal({
                   <div className="flex items-center gap-1.5 text-xs font-medium text-slate-800">
                     {selectedDocFile.name.toLowerCase().endsWith('.zip') ? (
                       <FolderArchive className="w-3.5 h-3.5 text-[#f05a28]" />
+                    ) : selectedDocFile.name.toLowerCase().endsWith('.kt') || selectedDocFile.name.toLowerCase().endsWith('.kts') ? (
+                      <FileCode className="w-3.5 h-3.5 text-purple-600" />
                     ) : (
                       <FileText className="w-3.5 h-3.5 text-[#f05a28]" />
                     )}
@@ -475,6 +491,8 @@ export function IngestionModal({
                             className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold ${
                               file.format === 'PDF'
                                 ? 'bg-rose-100 text-rose-700'
+                                : file.format === 'KT' || file.format === 'KOTLIN'
+                                ? 'bg-purple-100 text-purple-700'
                                 : 'bg-blue-100 text-blue-700'
                             }`}
                           >
