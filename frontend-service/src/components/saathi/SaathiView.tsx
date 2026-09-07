@@ -167,36 +167,24 @@ export const SaathiView: React.FC = () => {
             </p>
           </div>
 
-          {/* Quick Metrics & Reset */}
-          <div className="flex flex-col sm:flex-row md:flex-col items-start md:items-end gap-3 shrink-0">
-            <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-2xl px-4 py-2.5 backdrop-blur-xs">
-              <div className="w-8 h-8 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center font-black text-xs">
-                100%
-              </div>
-              <div className="text-left">
-                <span className="text-[10px] text-rose-200 uppercase font-bold block">Relationship Memory</span>
-                <span className="text-xs font-bold text-white">Preserved on Transfer</span>
-              </div>
-            </div>
+          {/* Actions & Reset */}
+          <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+            <button
+              onClick={() => setIsCustomerModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-white text-[#97144d] hover:bg-rose-50 text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Simulate Customer View</span>
+            </button>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsCustomerModalOpen(true)}
-                className="px-4 py-2 rounded-xl bg-white text-[#97144d] hover:bg-rose-50 text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span>Simulate Customer View</span>
-              </button>
-
-              <button
-                onClick={handleResetDemo}
-                disabled={isResetting}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
-                title="Reset demo scenarios"
-              >
-                <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
+            <button
+              onClick={handleResetDemo}
+              disabled={isResetting}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
+              title="Reset demo scenarios"
+            >
+              <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
       </div>
