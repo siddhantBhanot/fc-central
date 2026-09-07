@@ -32,7 +32,7 @@ class DirectRAGClient(RAGClientProtocol):
         self._ingestion = None
         self._kt_engine = None
         self._course_indexer = None
-        self._kt_indexed = False
+        self._indexed_courses: set = set()
         self._init_rag()
 
     def _init_rag(self) -> None:
@@ -415,14 +415,24 @@ class DirectRAGClient(RAGClientProtocol):
             job.completed_at = datetime.now(timezone.utc)
             return job
 
-    async def _ensure_kt_indexed(self):
-        if not self._kt_indexed and self._course_indexer:
-            self._kt_indexed = True
-            try:
-                import asyncio
-                asyncio.create_task(self._course_indexer.index_all_courses())
-            except Exception as e:
-                logger.warning(f"Failed to trigger async KT course indexing: {e}")
+    async def _ensure_kt_indexed(self, course_id: Optional[str] = None):
+        if not self._course_indexer:
+            return
+        try:
+            import asyncio
+            if course_id:
+                if course_id not in self._indexed_courses:
+                    self._indexed_courses.add(course_id)
+                    asyncio.create_task(self._course_indexer.index_course(course_id))
+            else:
+                from rag_service.knowledge_cafe.course_loader import get_course_loader
+                loader = get_course_loader()
+                for c in loader.list_courses():
+                    if c.id not in self._indexed_courses:
+                        self._indexed_courses.add(c.id)
+                        asyncio.create_task(self._course_indexer.index_course(c.id))
+        except Exception as e:
+            logger.warning(f"Failed to trigger async KT course indexing: {e}")
 
     async def list_courses(self) -> List[dict]:
         if self._kt_engine is None:
@@ -437,6 +447,7 @@ class DirectRAGClient(RAGClientProtocol):
             self._init_rag()
         if self._kt_engine is None:
             return None
+        await self._ensure_kt_indexed(course_id)
         return self._kt_engine.get_course_detail(course_id)
 
     async def synthesize_lesson(
@@ -507,6 +518,7 @@ class DirectRAGClient(RAGClientProtocol):
         if self._kt_engine is None:
             raise RAGServiceException("Knowledge Cafe engine could not be initialized.")
         try:
+            await self._ensure_kt_indexed(course_id)
             return await self._kt_engine.answer_doubt(
                 course_id=course_id,
                 lesson_id=lesson_id,
@@ -530,6 +542,7 @@ class DirectRAGClient(RAGClientProtocol):
         if self._kt_engine is None:
             raise RAGServiceException("Knowledge Cafe engine could not be initialized.")
         try:
+            await self._ensure_kt_indexed(course_id)
             stream_iter, raw_sources, meta = await self._kt_engine.stream_answer_doubt(
                 course_id=course_id,
                 lesson_id=lesson_id,

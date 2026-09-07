@@ -1,104 +1,114 @@
 ---
 id: jenkins-deployment-pipelines-kt
-title: Jenkins Build & Deployment Pipelines — Knowledge Transfer
-description: Understand Jenkins service builds, branch-based builds, build verification using Git commits, SIT and QA promotion, smoke-test gates, direct SIT deployment, and Helm configuration revisions.
-target_service: home-loan-platform
-domain: DevOps & CI/CD
-target_audience: Developers, QA Engineers, DevOps Engineers, and Release Engineers
+title: Jenkins Deployment Pipelines — Knowledge Transfer
+description: Understand Jenkins build pipelines, branch-based builds, build verification, build failure checks, Jenkins build options, and the master branch deployment flow from build through SIT and QA.
+target_service: Jenkins Deployment Pipelines Service
+domain: Jenkins Deployment Pipelines
+target_audience: Users working with Jenkins deployment pipelines
 difficulty: Intermediate
-estimated_duration: 1 hour 30 minutes
+estimated_duration: Not specified
 icon: Workflow
 tags:
   - Jenkins
-  - CI/CD
-  - Build With Parameters
-  - Git
-  - Bitbucket
+  - Build Pipeline
+  - Deployment
   - SIT
   - QA
-  - Smoke Tests
-  - Helm
-  - Kubernetes
-  - Deployment
+  - Master Branch
+  - Branch Build
+  - Version Manifest
+  - Smoke Test
+
 ---
 
-# Jenkins Build & Deployment Pipelines — Knowledge Transfer Curriculum
+# Jenkins Deployment Pipelines — Knowledge Transfer Curriculum
 
-## 01. Service Build Pipelines and Branch Selection
+## 01. Build Pipeline Overview
 
-- **Summary**: How Jenkins build pipelines are organized per UI/backend service, how BUILD WITH PARAMETERS is used, and how master and non-master branch builds differ.
+- **Summary**: Build pipelines exist for every service, including UI and backend services. Service naming can vary.
 - **Context**:
-  - lessons/01-build-pipelines/01-service-build-pipelines.md
-  - lessons/01-build-pipelines/02-branch-build-behavior.md
+  - lessons/01-build-pipeline/01-build-pipeline-overview.md
 - **Knowledge Check**:
-  - **Question**: What is the primary input used when starting a service build through BUILD WITH PARAMETERS?
+  - **Question**: Is there a build pipeline for every service, including UI and backend services?
   - **Type**: multiple_choice
   - **Options**:
-    - [x] The branch name to build
-    - The QA environment URL
-    - The Jenkins executor name
-    - The previous build number
-  - **Explanation**: The build pipeline requires the branch name so Jenkins knows which source branch to check out and build.
+    - [x] Yes, there will be a build pipeline for every service.
+    - No, only backend services have build pipelines.
+    - No, only UI services have build pipelines.
+    - Only master branch services have build pipelines.
+  - **Explanation**: There will be a build pipeline for every service, including UI and backend services.
 
-## 02. Build Version and Git Commit Verification
+## 02. Build With Parameters and Branch Selection
 
-- **Summary**: How to verify that Jenkins built the expected source revision by comparing the latest Git commit prefix with the generated build/image identifier.
+- **Summary**: Build pipelines use Build With Parameters, where a branch such as Feature, Hotfix, Custom, Release, or Master is provided.
 - **Context**:
-  - lessons/02-build-verification/01-build-number-and-commit-verification.md
+  - lessons/01-build-pipeline/02-build-with-parameters.md
 - **Knowledge Check**:
-  - **Question**: In `home-loan-ui:build-3340-ad9cb`, what does `ad9cb` represent?
+  - **Question**: What needs to be provided when using Build With Parameters for a build pipeline?
   - **Type**: multiple_choice
   - **Options**:
-    - The QA deployment number
-    - [x] The first five characters of the Git commit hash
-    - The Helm chart name
-    - The Jenkins agent ID
-  - **Explanation**: The commit prefix in the build identifier can be compared with the expected Git revision to verify the source version used by the build.
+    - [x] The branch to build.
+    - Only the environment name.
+    - Only the build number.
+    - Only the service name.
+  - **Explanation**: For the build pipeline, the branch needs to be provided.
 
-## 03. Investigating Jenkins Builds and Failures
+## 03. Build Verification and Image Identification
 
-- **Summary**: How to inspect a Jenkins build number, use Console Output for troubleshooting, and understand common build-page options.
+- **Summary**: Builds can be verified using the latest commit, Jenkins build number, console output, image naming format, and the Kubernetes.container_image field in Kibana logs.
 - **Context**:
-  - lessons/03-build-troubleshooting/01-build-details-and-console-output.md
-  - lessons/03-build-troubleshooting/02-build-page-options.md
+  - lessons/01-build-pipeline/03-build-verification-and-image-format.md
 - **Knowledge Check**:
-  - **Question**: What is usually the first Jenkins page to inspect when a build fails?
+  - **Question**: What can be searched in the Jenkins console output to verify the build against the latest commit?
   - **Type**: multiple_choice
   - **Options**:
-    - Changes
-    - Parameters
+    - [x] The first 5 values of the last commit.
+    - The complete commit history.
+    - Only the service name.
+    - Only the environment name.
+  - **Explanation**: The first 5 values of the last commit can be searched in the console output and matched with the build image information.
+
+## 04. Build Failure Checks and Jenkins Build Options
+
+- **Summary**: Failed builds can be investigated through Jenkins console output and the options available when opening a build number.
+- **Context**:
+  - lessons/02-build-failure-and-debugging/01-build-failure-and-jenkins-options.md
+- **Knowledge Check**:
+  - **Question**: What is usually the first place to check when a Jenkins build fails?
+  - **Type**: multiple_choice
+  - **Options**:
     - [x] Console Output
     - Previous Build
-  - **Explanation**: Console Output contains the detailed execution logs and is usually the primary source for identifying the failure reason.
+    - Timings
+    - Lockable Resources
+  - **Explanation**: Console Output shows the complete logs generated during the build and is usually the first place to check when a build fails.
 
-## 04. Master Branch Promotion: SIT, Smoke Test, and QA
+## 05. Master Branch Build Flow
 
-- **Summary**: The master build promotion flow from successful application build to version manifest, SIT deployment, SIT smoke testing, and QA deployment.
+- **Summary**: A successful master branch build flows through build, version manifest generation, SIT deployment, optional SIT smoke testing, and QA deployment.
 - **Context**:
-  - lessons/04-master-promotion-flow/01-master-to-sit-and-qa.md
-  - lessons/04-master-promotion-flow/02-direct-sit-deployment.md
+  - lessons/03-master-branch-build-flow/01-master-branch-sit-qa-flow.md
 - **Knowledge Check**:
-  - **Question**: In the documented automatic promotion flow, what must happen before QA deployment?
+  - **Question**: After SIT deployment is completed successfully, what is triggered when smoke tests are configured?
   - **Type**: multiple_choice
   - **Options**:
-    - A feature branch must be merged
-    - The Helm branch must be deleted
-    - [x] SIT deployment must succeed and SIT smoke tests must be green
-    - A new Jenkins agent must be created
-  - **Explanation**: QA promotion occurs after successful SIT deployment and successful/green SIT smoke tests.
+    - [x] Automated smoke tests.
+    - Another master build.
+    - A Bitbucket fetch.
+    - A new feature branch.
+  - **Explanation**: Once the SIT deployment is completed successfully, automated smoke tests are triggered if smoke tests are configured.
 
-## 05. Helm Configuration and Deployment Revisions
+## 06. SIT and QA Manual Deployment
 
-- **Summary**: How Helm manages environment-specific configuration, how the Helm build pipeline builds a selected branch, and how the resulting revision/version is used by product deployment pipelines.
+- **Summary**: SIT and QA deployment can be manually triggered when automated SCM triggering does not occur.
 - **Context**:
-  - lessons/05-helm-deployment/01-helm-configuration-and-build.md
-  - lessons/05-helm-deployment/02-helm-revision-in-product-deployment.md
+  - lessons/03-master-branch-build-flow/01-master-branch-sit-qa-flow.md
 - **Knowledge Check**:
-  - **Question**: What is the main role of the Helm build pipeline in this workflow?
+  - **Question**: What can be done when automated SCM triggering does not occur?
   - **Type**: multiple_choice
   - **Options**:
-    - Compile Java or UI source code
-    - Run SIT smoke tests
-    - [x] Build and version environment-specific deployment configuration
-    - Create Jenkins build numbers
-  - **Explanation**: The Helm build pipeline builds the selected Helm configuration branch and produces a revision/version used by the relevant product deployment pipeline.
+    - [x] Manually deploy to the SIT and QA environments.
+    - Delete the build.
+    - Change the build number.
+    - Skip the deployment process.
+  - **Explanation**: When automated SCM triggering does not occur, deployment can be manually triggered for the SIT and QA environments.
