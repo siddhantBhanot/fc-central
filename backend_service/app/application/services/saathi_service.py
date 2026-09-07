@@ -1,6 +1,8 @@
+import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import Dict, List, Optional
+import uuid
 
 from backend_service.app.domain.models.saathi import (
     CustomerRelationship,
@@ -21,8 +23,12 @@ from backend_service.app.domain.models.saathi import (
     AskSaathiResponse,
     AskEvidenceItem,
     HealthLevel,
+    ManualContextItem,
+    AddContextRequest,
+    CRMInteraction,
 )
 from backend_service.app.infrastructure.persistence.saathi_seed import get_saathi_seed_data
+from backend_service.app.infrastructure.services.saathi_indexer import get_saathi_indexer
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +46,22 @@ class SaathiService:
 
     def __init__(self) -> None:
         self._customers: Dict[str, CustomerRelationship] = get_saathi_seed_data()
+        self._indexer = get_saathi_indexer()
+        self._initial_indexing_done = False
+
+    async def ensure_indexed(self, customer_id: Optional[str] = None) -> None:
+        """Ensure customer context is indexed into the dedicated Saathi Qdrant collection."""
+        try:
+            if customer_id:
+                cust = self._customers.get(customer_id)
+                if cust:
+                    await self._indexer.index_customer(cust)
+            else:
+                for c in self._customers.values():
+                    await self._indexer.index_customer(c)
+                self._initial_indexing_done = True
+        except Exception as e:
+            logger.warning(f"Background Saathi Qdrant indexing note: {e}")
 
     def list_customers(self) -> List[CustomerSummaryDTO]:
         """List all customer relationship transition cases with health and counts."""
@@ -73,42 +95,129 @@ class SaathiService:
 
     def get_customer(self, customer_id: str) -> Optional[CustomerRelationship]:
         """Retrieve full relationship profile with all grounding data."""
-        return self._customers.get(customer_id)
+        customer = self._customers.get(customer_id)
+        if customer and not self._initial_indexing_done:
+            # Trigger background indexing for quick semantic retrieval
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.ensure_indexed(customer_id))
+            except Exception:
+                pass
+        return customer
+
+    async def add_manual_context(
+        self,
+        customer_id: str,
+        request: AddContextRequest,
+    ) -> CustomerRelationship:
+        """
+        Manually add extra relationship context from the UI for a given customer.
+        The context is stored in memory, indexed in the dedicated Qdrant collection,
+        and triggers a full AI brief re-synthesis incorporating ALL context.
+        """
+        customer = self._customers.get(customer_id)
+        if not customer:
+            raise ValueError(f"Customer '{customer_id}' not found.")
+
+        now = datetime.now(timezone.utc)
+        note_id = f"ctx-{uuid.uuid4().hex[:8]}"
+        created_at_str = now.strftime("%Y-%m-%d %H:%M")
+
+        manual_item = ManualContextItem(
+            id=note_id,
+            title=request.title,
+            category=request.category,
+            content=request.content,
+            source_channel=request.source_channel,
+            recorded_by=request.recorded_by or customer.new_rm_name,
+            created_at=created_at_str,
+        )
+
+        customer.extra_context.insert(0, manual_item)
+
+        # Also add to interaction history
+        customer.interactions.insert(
+            0,
+            CRMInteraction(
+                id=f"int-{note_id}",
+                date=now.strftime("%Y-%m-%d"),
+                channel=request.source_channel,
+                rm_name=manual_item.recorded_by,
+                summary=f"[{request.category}] {request.title}: {request.content}",
+                tags=["Manual Note", request.category],
+            ),
+        )
+
+        # 1. Index into dedicated Qdrant collection
+        try:
+            await self._indexer.index_single_context(customer_id, customer.name, manual_item)
+        except Exception as e:
+            logger.warning(f"Failed to index manual context in Qdrant: {e}")
+
+        # 2. Re-synthesize AI brief incorporating ALL customer context
+        try:
+            await self.synthesize_brief(customer_id)
+        except Exception as e:
+            logger.warning(f"Failed to re-synthesize brief after adding context: {e}")
+
+        return customer
 
     async def synthesize_brief(self, customer_id: str) -> RelationshipBrief:
         """
-        Synthesizes a Relationship Brief for the new RM using CRM touchpoints, commitments, and facts.
+        Synthesizes a Relationship Brief for the new RM using CRM touchpoints, commitments,
+        facts, and all manually added context retrieved from Qdrant.
         """
         customer = self._customers.get(customer_id)
         if not customer:
             raise ValueError(f"Customer '{customer_id}' not found.")
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        
-        # Try dynamic LLM synthesis if DirectRAGClient is reachable
+
+        # Retrieve comprehensive customer context from Qdrant
+        qdrant_context = await self._indexer.get_all_customer_context_text(
+            customer_id=customer_id,
+            fallback_customer=customer,
+        )
+
+        # Dynamic LLM synthesis using DirectRAGClient
         try:
             from backend_service.app.infrastructure.clients.direct_rag_client import DirectRAGClient
             rag = DirectRAGClient()
+
+            manual_notes_section = ""
+            if customer.extra_context:
+                manual_notes_section = "Latest Manually Recorded Context Notes by RM:\n" + "\n".join(
+                    [f"- [{ctx.category}] {ctx.title}: {ctx.content} (by {ctx.recorded_by} via {ctx.source_channel})" for ctx in customer.extra_context]
+                ) + "\n\n"
+
             prompt = (
                 f"You are the Axis Bank Saathi Relationship Continuity AI. Synthesize an empathetic, concise Relationship Brief "
                 f"for incoming RM '{customer.new_rm_name}' taking over client '{customer.name}' ({customer.tier.value}, AUM: {customer.aum_display}).\n"
-                f"Previous RM: {customer.previous_rm_name} (Transfer Reason: {customer.transfer_reason}).\n"
-                f"Key Interactions:\n" + "\n".join([f"- {i.date} ({i.channel}): {i.summary}" for i in customer.interactions]) + "\n"
-                f"Outstanding Commitments:\n" + "\n".join([f"- [{com.commitment_type.value}] {com.title}: {com.details}" for com in customer.commitments]) + "\n"
-                f"Generate an executive summary and a warm first-call conversation opener acknowledging the previous RM and referencing existing commitments."
+                f"Previous RM: {customer.previous_rm_name} (Transfer Reason: {customer.transfer_reason}).\n\n"
+                f"{manual_notes_section}"
+                f"All Grounded Customer Context from Qdrant Vector DB:\n{qdrant_context}\n\n"
+                f"CRITICAL INSTRUCTIONS:\n"
+                f"1. Synthesize an executive summary that weaves together ALL customer dimensions (family, wealth, commitments, and any newly added notes).\n"
+                f"2. Provide a warm first-call conversation opener acknowledging previous RM and referencing existing commitments or latest discussion points.\n"
+                f"Keep the summary professional, executive, and actionable."
             )
             resp = await rag.query(query_text=prompt, service="saathi")
             llm_text = getattr(resp, "answer", None) or getattr(resp, "response", None) or str(resp)
 
             if llm_text and len(llm_text) > 80:
                 if customer.brief:
-                    customer.brief.executive_summary = llm_text[:400] + ("..." if len(llm_text) > 400 else "")
+                    customer.brief.executive_summary = llm_text[:600] + ("..." if len(llm_text) > 600 else "")
                     customer.brief.synthesized_at = now_iso
                     return customer.brief
         except Exception as e:
-            logger.info(f"Using rich pre-seeded brief for Saathi: {e}")
+            logger.info(f"Using rich pre-seeded/computed brief for Saathi: {e}")
 
         if customer.brief:
+            if customer.extra_context and len(customer.extra_context) > 0:
+                latest_note = customer.extra_context[0]
+                base_summary = customer.brief.executive_summary.split(" (Latest Note:")[0]
+                customer.brief.executive_summary = f"{base_summary} (Latest Note: [{latest_note.category}] {latest_note.title} - {latest_note.content[:120]}...)"
             customer.brief.synthesized_at = now_iso
             return customer.brief
 
@@ -116,7 +225,8 @@ class SaathiService:
 
     async def ask_saathi(self, customer_id: str, question: str) -> AskSaathiResponse:
         """
-        Answers natural-language RM questions grounded strictly in customer history.
+        Answers natural-language RM questions grounded strictly in customer history,
+        leveraging the dedicated Saathi Qdrant collection for semantic vector retrieval.
         Explicitly distinguishes between confirmed commitments and discussed possibilities,
         and identifies when no record exists.
         """
@@ -126,10 +236,36 @@ class SaathiService:
 
         q_lower = question.lower()
 
-        # Check for commitment / concession / promise specific questions
-        is_asking_concession_or_promise = any(
-            k in q_lower for k in ["promise", "concession", "owe", "discount", "preferential", "tuition", "rate", "commitment"]
-        )
+        # 1. Semantic Vector Search against dedicated Saathi Qdrant collection
+        vector_chunks = []
+        try:
+            vector_chunks = await self._indexer.search_customer_context(
+                customer_id=customer_id,
+                query=question,
+                limit=6,
+            )
+        except Exception as e:
+            logger.warning(f"Saathi Qdrant search note: {e}")
+
+        vector_context_parts = []
+        evidence_from_vectors = []
+        for c in vector_chunks:
+            source = c.metadata.extra.get("source", "Saathi Vector DB")
+            date = c.metadata.extra.get("date", "Recorded")
+            rm_name = c.metadata.extra.get("rm_name", "RM/Bank")
+            com_type = c.metadata.extra.get("commitment_type")
+            vector_context_parts.append(
+                f"[{c.metadata.extra.get('doc_type', 'Record')} | {source} | Date: {date}]:\n{c.content}"
+            )
+            evidence_from_vectors.append(
+                AskEvidenceItem(
+                    date=date,
+                    channel=f"Qdrant ({source})",
+                    rm_name=rm_name,
+                    snippet=c.content[:240],
+                    commitment_type=com_type,
+                )
+            )
 
         # Dynamic LLM evaluation with strict anti-hallucination prompt
         try:
@@ -143,17 +279,26 @@ class SaathiService:
                 [f"Title: {c.title}\nStatus: {c.status.value}\nType: {c.commitment_type.value}\nPromised by: {c.committed_by} on {c.committed_on}\nDetails: {c.details}\nEvidence: {c.evidence_snippet}" for c in customer.commitments]
             )
             facts_context = "\n".join([f"- [{f.category}] {f.statement} (Status: {f.status.value})" for f in customer.facts])
+            manual_notes_context = "\n".join([f"- [{m.category}] {m.title}: {m.content} (by {m.recorded_by} on {m.created_at} via {m.source_channel})" for m in customer.extra_context])
+            vector_block = "\n\n".join(vector_context_parts) if vector_context_parts else "Use below customer records:"
 
             llm_prompt = f"""You are Saathi, the Axis Bank Relationship Memory & Continuity Assistant.
 Answer the following Relationship Manager's question about customer '{customer.name}'.
 
 CRITICAL RULES:
-1. Ground your answer ONLY in the provided Customer History, Commitments, and Facts.
+1. Ground your answer ONLY in the provided Customer History, Qdrant Vector Chunks, Commitments, and Manual Notes.
 2. If asked about a promise, concession, or discount:
    - Clearly distinguish between a CONFIRMED COMMITMENT (a firm promise or SLA) vs a DISCUSSED POSSIBILITY (an idea or request that was explored but no commitment was made).
 3. If the question asks about something that does NOT exist in the record, explicitly state:
    "I couldn't find any record of that in {customer.name}'s history."
-4. Be concise, professional, and actionable for a private banker.
+4. If the question relates to manual notes or recent context added by the RM, reference it accurately.
+5. Be concise, professional, and actionable for a private banker.
+
+RELEVANT VECTOR DB CHUNKS (Collection: saathi_relationship_collection, filtered for customer_id='{customer_id}'):
+{vector_block}
+
+MANUAL RELATIONSHIP CONTEXT NOTES:
+{manual_notes_context or 'None recorded yet.'}
 
 CUSTOMER FACTS:
 {facts_context}
@@ -172,48 +317,50 @@ Provide your answer concisely."""
             answer_text = getattr(resp, "answer", None) or getattr(resp, "response", None) or str(resp)
 
             if answer_text and len(answer_text) > 40:
-                # Gather supporting evidence
-                evidence_list = []
-                detected_type = None
-                is_com = False
-
-                for com in customer.commitments:
-                    if any(word in q_lower for word in com.title.lower().split() if len(word) > 3):
-                        is_com = True
-                        detected_type = com.commitment_type.value
-                        evidence_list.append(
-                            AskEvidenceItem(
-                                date=com.committed_on,
-                                channel="CRM Commitment Log",
-                                rm_name=com.committed_by,
-                                snippet=com.evidence_snippet or com.details,
-                                commitment_type=com.commitment_type.value,
+                evidence_list = evidence_from_vectors[:3]
+                if not evidence_list:
+                    for int_item in customer.interactions:
+                        if any(word in int_item.summary.lower() for word in q_lower.split() if len(word) > 4):
+                            evidence_list.append(
+                                AskEvidenceItem(
+                                    date=int_item.date,
+                                    channel=int_item.channel,
+                                    rm_name=int_item.rm_name,
+                                    snippet=int_item.summary,
+                                )
                             )
-                        )
-
-                for int_item in customer.interactions:
-                    if any(word in int_item.summary.lower() for word in q_lower.split() if len(word) > 4):
-                        evidence_list.append(
-                            AskEvidenceItem(
-                                date=int_item.date,
-                                channel=int_item.channel,
-                                rm_name=int_item.rm_name,
-                                snippet=int_item.summary,
-                                commitment_type=detected_type,
-                            )
-                        )
 
                 return AskSaathiResponse(
                     question=question,
                     answer=answer_text,
-                    is_commitment=is_com or is_asking_concession_or_promise,
-                    commitment_type=detected_type or ("discussed_possibility" if "discussed" in answer_text.lower() else "none"),
-                    evidence=evidence_list[:3],
+                    is_commitment="commitment" in answer_text.lower() or "promise" in answer_text.lower(),
+                    commitment_type="confirmed_commitment" if "confirmed" in answer_text.lower() else ("discussed_possibility" if "discussed" in answer_text.lower() else "none"),
+                    evidence=evidence_list,
                     confidence="high",
-                    drilldown_context=f"Synthesized from {len(customer.interactions)} CRM records and {len(customer.commitments)} tracked commitments.",
+                    drilldown_context=f"Grounded via Qdrant Vector DB ({len(vector_chunks)} chunks) across {len(customer.interactions)} CRM records and {len(customer.extra_context)} manual context notes.",
                 )
         except Exception as e:
             logger.info(f"Using high-accuracy deterministic response for question: {e}")
+
+        # Deterministic fallback check for manual context notes
+        for note in customer.extra_context:
+            if any(w in note.content.lower() or w in note.title.lower() for w in q_lower.split() if len(w) > 3):
+                return AskSaathiResponse(
+                    question=question,
+                    answer=f"According to the manual context note '{note.title}' recorded by {note.recorded_by} ({note.category}): {note.content}",
+                    is_commitment=False,
+                    commitment_type="none",
+                    evidence=[
+                        AskEvidenceItem(
+                            date=note.created_at,
+                            channel=f"Manual RM Note ({note.source_channel})",
+                            rm_name=note.recorded_by,
+                            snippet=note.content,
+                        )
+                    ],
+                    confidence="high",
+                    drilldown_context=f"Matched from manual context note '{note.title}'.",
+                )
 
         # High-Accuracy Deterministic Grounded Reasoning
         return self._deterministic_ask(customer, question, q_lower)

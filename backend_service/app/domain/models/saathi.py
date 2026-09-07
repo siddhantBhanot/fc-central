@@ -171,6 +171,24 @@ class CustomerFeedback(BaseModel):
     has_verified: bool = False
 
 
+class ManualContextItem(BaseModel):
+    id: str
+    title: str
+    category: str = "General"
+    content: str
+    source_channel: str = "RM Note"
+    recorded_by: str = "Relationship Manager"
+    created_at: str
+
+
+class AddContextRequest(BaseModel):
+    title: str
+    category: str = "General"
+    content: str
+    source_channel: str = "RM Note"
+    recorded_by: Optional[str] = None
+
+
 class CustomerRelationship(BaseModel):
     id: str
     name: str
@@ -202,6 +220,7 @@ class CustomerRelationship(BaseModel):
     timeline: List[RelationshipTimelineEvent] = Field(default_factory=list)
     contradictions: List[ContradictionAlert] = Field(default_factory=list)
     facts: List[CustomerFact] = Field(default_factory=list)
+    extra_context: List[ManualContextItem] = Field(default_factory=list)
     health: Optional[RelationshipHealth] = None
     pre_call_brief: Optional[PreCallBriefing] = None
     management_summary: Optional[ManagementSummary] = None

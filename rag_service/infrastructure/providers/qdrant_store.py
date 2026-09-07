@@ -75,6 +75,16 @@ class QdrantVectorStoreAdapter:
                     field_name="course_id",
                     field_schema=PayloadSchemaType.KEYWORD,
                 )
+                self._client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="customer_id",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                self._client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="doc_type",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
             except Exception:
                 pass
         except Exception as e:

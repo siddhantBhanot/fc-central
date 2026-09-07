@@ -10,9 +10,11 @@ import apiClient from '@/lib/api/client';
 import type {
   CustomerRelationship,
   CustomerSummaryDTO,
+  AddContextRequest,
 } from '@/types';
 import { RMHandoverDashboard } from './RMHandoverDashboard';
 import { CustomerContinuityModal } from './CustomerContinuityModal';
+import { AddContextModal } from './AddContextModal';
 
 export const SaathiView: React.FC = () => {
   const [customerSummaries, setCustomerSummaries] = useState<CustomerSummaryDTO[]>([]);
@@ -21,6 +23,7 @@ export const SaathiView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [isAddContextOpen, setIsAddContextOpen] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -73,6 +76,17 @@ export const SaathiView: React.FC = () => {
   };
 
 
+
+  const handleSaveContext = async (data: AddContextRequest) => {
+    if (!selectedCustomerId) return;
+    try {
+      const updated = await apiClient.addSaathiContext(selectedCustomerId, data);
+      setActiveCustomer(updated);
+      await loadCustomers();
+    } catch (err) {
+      console.error('Failed to add context note:', err);
+    }
+  };
 
   const handleSubmitCustomerFeedback = async (notes: string) => {
     if (!selectedCustomerId) return;
@@ -283,6 +297,7 @@ export const SaathiView: React.FC = () => {
         <RMHandoverDashboard
           customer={activeCustomer}
           onOpenCustomerView={() => setIsCustomerModalOpen(true)}
+          onOpenAddContext={() => setIsAddContextOpen(true)}
           onSynthesizeBrief={handleSynthesizeBrief}
           onRefreshCustomer={handleRefreshCustomer}
           isSynthesizing={isSynthesizing}
@@ -301,6 +316,16 @@ export const SaathiView: React.FC = () => {
           onClose={() => setIsCustomerModalOpen(false)}
           onSubmitFeedback={handleSubmitCustomerFeedback}
           onFactValidated={handleRefreshCustomer}
+        />
+      )}
+
+      {/* Add Relationship Context Modal */}
+      {activeCustomer && (
+        <AddContextModal
+          customer={activeCustomer}
+          isOpen={isAddContextOpen}
+          onClose={() => setIsAddContextOpen(false)}
+          onSaveContext={handleSaveContext}
         />
       )}
 

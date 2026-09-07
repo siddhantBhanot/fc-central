@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  BookOpen,
   Building2,
   Check,
   Copy,
@@ -8,6 +9,7 @@ import {
   History,
   MessageCircle,
   PhoneCall,
+  Plus,
   RefreshCw,
   Repeat,
   Sparkles,
@@ -23,6 +25,7 @@ import { ManagementSummaryModal } from './ManagementSummaryModal';
 interface RMHandoverDashboardProps {
   customer: CustomerRelationship;
   onOpenCustomerView: () => void;
+  onOpenAddContext?: () => void;
   onSynthesizeBrief: () => Promise<void>;
   onRefreshCustomer?: () => Promise<void>;
   isSynthesizing: boolean;
@@ -31,6 +34,7 @@ interface RMHandoverDashboardProps {
 export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
   customer,
   onOpenCustomerView,
+  onOpenAddContext,
   onSynthesizeBrief,
   isSynthesizing,
 }) => {
@@ -154,6 +158,17 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenAddContext && (
+            <button
+              onClick={onOpenAddContext}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-900 to-[#97144d] hover:from-rose-800 hover:to-[#7d103f] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              title="Add manual relationship context, advisor notes, or life stage updates"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Add Context</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenCustomerView}
             className="px-3.5 py-1.5 rounded-xl bg-rose-50 text-[#97144d] hover:bg-rose-100 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
@@ -187,6 +202,16 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {onOpenAddContext && (
+                    <button
+                      onClick={onOpenAddContext}
+                      className="px-3 py-1.5 rounded-xl bg-rose-50 text-[#97144d] hover:bg-rose-100 border border-rose-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Context</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={onSynthesizeBrief}
                     disabled={isSynthesizing}
@@ -214,6 +239,40 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
                       {customer.brief.executive_summary}
                     </p>
                   </div>
+
+                  {/* Manually Added Relationship Context (Vectorized in Qdrant) */}
+                  {customer.extra_context && customer.extra_context.length > 0 && (
+                    <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-amber-900 font-bold text-[11px] uppercase tracking-wider">
+                          <BookOpen className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Manually Added Relationship Context ({customer.extra_context.length}) • Vectorized in Qdrant</span>
+                        </div>
+                        <span className="text-[10px] text-amber-700 font-semibold bg-amber-100/80 px-2 py-0.5 rounded-full">
+                          Live Context
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {customer.extra_context.map((ctx) => (
+                          <div key={ctx.id} className="p-3 bg-white rounded-xl border border-amber-200/60 shadow-2xs space-y-1">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900 text-xs">{ctx.title}</span>
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
+                                  {ctx.category}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400">
+                                {ctx.created_at} • {ctx.recorded_by} ({ctx.source_channel})
+                              </span>
+                            </div>
+                            <p className="text-slate-600 text-xs leading-relaxed">{ctx.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Customer Priorities (Section 5) */}
                   {customer.brief.customer_priorities && customer.brief.customer_priorities.length > 0 && (

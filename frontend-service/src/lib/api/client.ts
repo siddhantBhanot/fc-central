@@ -39,6 +39,7 @@ import type {
   PreCallBriefing,
   ManagementSummary,
   AskSaathiResponse,
+  AddContextRequest,
   User,
 } from '@/types';
 
@@ -683,6 +684,22 @@ export class ApiClient {
    */
   async getSaathiCustomer(customerId: string): Promise<CustomerRelationship> {
     return this.fetch<CustomerRelationship>(`/api/v1/saathi/customers/${encodeURIComponent(customerId)}`);
+  }
+
+  /**
+   * Manually add extra relationship context for a customer
+   */
+  async addSaathiContext(
+    customerId: string,
+    data: AddContextRequest
+  ): Promise<CustomerRelationship> {
+    return this.fetch<CustomerRelationship>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/context`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
   }
 
   /**

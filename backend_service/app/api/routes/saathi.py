@@ -21,6 +21,8 @@ from backend_service.app.domain.models.saathi import (
     ValidateFactRequest,
     PreCallBriefing,
     ManagementSummary,
+    AddContextRequest,
+    ManualContextItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,26 @@ async def get_customer_relationship(
             detail=f"Customer transition profile '{customer_id}' not found.",
         )
     return customer
+
+
+@router.post("/customers/{customer_id}/context", response_model=CustomerRelationship)
+async def add_customer_context(
+    customer_id: str,
+    payload: AddContextRequest,
+    saathi_service: SaathiService = Depends(get_saathi_service),
+) -> CustomerRelationship:
+    """
+    Manually add extra relationship context for a given customer from the UI.
+    Automatically indexes the note into the dedicated Saathi Qdrant collection
+    and re-synthesizes the AI Relationship Brief.
+    """
+    try:
+        return await saathi_service.add_manual_context(customer_id=customer_id, request=payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to add customer context for {customer_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/customers/{customer_id}/synthesize-brief", response_model=RelationshipBrief)

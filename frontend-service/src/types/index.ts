@@ -502,6 +502,24 @@ export interface CustomerFeedback {
   has_verified: boolean;
 }
 
+export interface ManualContextItem {
+  id: string;
+  title: string;
+  category: string;
+  content: string;
+  source_channel: string;
+  recorded_by: string;
+  created_at: string;
+}
+
+export interface AddContextRequest {
+  title: string;
+  category?: string;
+  content: string;
+  source_channel?: string;
+  recorded_by?: string;
+}
+
 export interface CustomerRelationship {
   id: string;
   name: string;
@@ -527,6 +545,7 @@ export interface CustomerRelationship {
   timeline?: RelationshipTimelineEvent[];
   contradictions?: ContradictionAlert[];
   facts?: CustomerFact[];
+  extra_context?: ManualContextItem[];
   health?: RelationshipHealth | null;
   pre_call_brief?: PreCallBriefing | null;
   management_summary?: ManagementSummary | null;
