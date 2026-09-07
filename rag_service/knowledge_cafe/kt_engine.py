@@ -4,7 +4,7 @@ import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from rag_service.domain.models import Message, MessageRole
-from rag_service.domain.protocols import LLMProvider
+from rag_service.domain.protocols import EmbeddingProvider, LLMProvider, VectorStore
 from rag_service.knowledge_cafe.course_loader import (
     CourseDefinition,
     CourseLoader,
@@ -28,10 +28,14 @@ class KTEngine:
         llm_provider: LLMProvider,
         course_loader: Optional[CourseLoader] = None,
         prompt_loader: Optional[PromptLoader] = None,
+        kt_vector_store: Optional[VectorStore] = None,
+        embedding_provider: Optional[EmbeddingProvider] = None,
     ):
         self.llm_provider = llm_provider
         self.course_loader = course_loader or get_course_loader()
         self.prompt_loader = prompt_loader or get_prompt_loader()
+        self.kt_vector_store = kt_vector_store
+        self.embedding_provider = embedding_provider
 
     def list_courses(self) -> List[Dict[str, Any]]:
         courses = self.course_loader.list_courses()
@@ -150,6 +154,63 @@ class KTEngine:
             "model": llm_response.model or model or "default",
         }
 
+    async def _resolve_doubt_context(
+        self,
+        course: CourseDefinition,
+        lesson: LessonMetadata,
+        question: str,
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Retrieve context for answering an in-lesson doubt.
+        If Qdrant kt_vector_store is available, queries knowledge_cafe_collection
+        strictly pre-filtered by course_id so only this course's material is retrieved.
+        Also combines the active lesson's local context files for complete grounding.
+        """
+        context_blocks: List[str] = []
+        sources: List[Dict[str, Any]] = []
+        seen_files = set()
+
+        # 1. Semantic search in dedicated Qdrant collection filtered strictly by course_id
+        if self.kt_vector_store and self.embedding_provider:
+            try:
+                query_vector = await self.embedding_provider.embed_query(question)
+                matched_chunks = await self.kt_vector_store.search(
+                    query_vector=query_vector,
+                    limit=5,
+                    filter_dict={"course_id": course.id},
+                )
+                for chunk in matched_chunks:
+                    fn = chunk.metadata.extra.get("file_name") or chunk.metadata.file_path
+                    lesson_title = chunk.metadata.extra.get("lesson_title", "")
+                    label = f"Course Material: {fn}" + (f" ({lesson_title})" if lesson_title else "")
+                    context_blocks.append(f"=== {label} ===\n{chunk.content}\n")
+                    seen_files.add(fn)
+                    sources.append({
+                        "file": fn,
+                        "service": course.target_service,
+                        "doc_type": "course_context",
+                        "snippet": chunk.content[:200] + "..." if len(chunk.content) > 200 else chunk.content,
+                    })
+            except Exception as e:
+                logger.warning(
+                    f"Vector search in knowledge_cafe_collection failed, falling back to local files: {e}"
+                )
+
+        # 2. Guarantee current lesson's local context files are included
+        file_contents = self.course_loader.read_lesson_context_files(course.id, lesson.id)
+        for file_name, content in file_contents:
+            if file_name not in seen_files:
+                context_blocks.append(f"=== Lesson Context: {file_name} ===\n{content}\n")
+                sources.append({
+                    "file": file_name,
+                    "service": course.target_service,
+                    "doc_type": "course_context",
+                    "snippet": content[:200] + "..." if len(content) > 200 else content,
+                })
+
+        context_text = "\n---------------------\n".join(context_blocks) if context_blocks else lesson.summary
+        return context_text, sources
+
     async def answer_doubt(
         self,
         course_id: str,
@@ -159,7 +220,7 @@ class KTEngine:
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Answers an in-lesson developer doubt grounded in the lesson's context files.
+        Answers an in-lesson developer doubt grounded strictly in the course's vetted context files.
         """
         start_time = time.perf_counter()
         course = self.course_loader.get_course(course_id)
@@ -170,18 +231,7 @@ class KTEngine:
         if not lesson:
             raise ValueError(f"Lesson '{lesson_id}' not found.")
 
-        file_contents = self.course_loader.read_lesson_context_files(course_id, lesson_id)
-        context_blocks = []
-        sources = []
-        for file_name, content in file_contents:
-            context_blocks.append(f"=== File: {file_name} ===\n{content}\n")
-            sources.append({
-                "file": file_name,
-                "service": course.target_service,
-                "doc_type": "course_context",
-                "snippet": content[:200] + "..." if len(content) > 200 else content,
-            })
-        context_text = "\n---------------------\n".join(context_blocks) if context_blocks else lesson.summary
+        context_text, sources = await self._resolve_doubt_context(course, lesson, question)
 
         prompt_content = self.prompt_loader.render(
             "kt_lesson_doubt",
@@ -313,18 +363,7 @@ class KTEngine:
         if not lesson:
             raise ValueError(f"Lesson '{lesson_id}' not found.")
 
-        file_contents = self.course_loader.read_lesson_context_files(course_id, lesson_id)
-        context_blocks = []
-        sources = []
-        for file_name, content in file_contents:
-            context_blocks.append(f"=== File: {file_name} ===\n{content}\n")
-            sources.append({
-                "file": file_name,
-                "service": course.target_service,
-                "doc_type": "course_context",
-                "snippet": content[:200] + "..." if len(content) > 200 else content,
-            })
-        context_text = "\n---------------------\n".join(context_blocks) if context_blocks else lesson.summary
+        context_text, sources = await self._resolve_doubt_context(course, lesson, question)
 
         prompt_content = self.prompt_loader.render(
             "kt_lesson_doubt",

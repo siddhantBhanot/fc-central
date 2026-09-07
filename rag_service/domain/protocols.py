@@ -1,4 +1,4 @@
-from typing import Any, AsyncIterator, List, Optional, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, runtime_checkable
 
 from .models import Chunk, LLMResponse, Message
 
@@ -76,10 +76,11 @@ class VectorStore(Protocol):
         query_vector: List[float],
         limit: int = 5,
         service_filter: Optional[str] = None,
+        filter_dict: Optional[Dict[str, Any]] = None,
         score_threshold: Optional[float] = None,
     ) -> List[Chunk]:
         """
-        Perform nearest neighbor semantic search with service-level metadata filtering.
+        Perform nearest neighbor semantic search with service-level or arbitrary metadata filtering.
         """
         ...
 

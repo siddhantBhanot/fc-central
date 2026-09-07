@@ -31,6 +31,8 @@ class DirectRAGClient(RAGClientProtocol):
         self._pipeline = None
         self._ingestion = None
         self._kt_engine = None
+        self._course_indexer = None
+        self._kt_indexed = False
         self._init_rag()
 
     def _init_rag(self) -> None:
@@ -87,15 +89,29 @@ class DirectRAGClient(RAGClientProtocol):
                 default_service=settings.default_microservice,
             )
 
+            from rag_service.infrastructure.providers.qdrant_store import QdrantVectorStoreAdapter
             from rag_service.knowledge_cafe.kt_engine import KTEngine
+            from rag_service.knowledge_cafe.course_indexer import CourseIndexer
+
+            kt_vector_store = QdrantVectorStoreAdapter(
+                settings=settings,
+                collection_name=settings.qdrant_kt_collection_name,
+            )
             self._kt_engine = KTEngine(
                 llm_provider=llm_provider,
                 prompt_loader=prompt_loader,
+                kt_vector_store=kt_vector_store,
+                embedding_provider=embedding_provider,
+            )
+            self._course_indexer = CourseIndexer(
+                vector_store=kt_vector_store,
+                embedding_provider=embedding_provider,
             )
         except Exception as e:
             self._pipeline = None
             self._ingestion = None
             self._kt_engine = None
+            self._course_indexer = None
 
     def _ensure_initialized(self):
         if self._pipeline is None or self._kt_engine is None:
@@ -399,11 +415,21 @@ class DirectRAGClient(RAGClientProtocol):
             job.completed_at = datetime.now(timezone.utc)
             return job
 
+    async def _ensure_kt_indexed(self):
+        if not self._kt_indexed and self._course_indexer:
+            self._kt_indexed = True
+            try:
+                import asyncio
+                asyncio.create_task(self._course_indexer.index_all_courses())
+            except Exception as e:
+                logger.warning(f"Failed to trigger async KT course indexing: {e}")
+
     async def list_courses(self) -> List[dict]:
         if self._kt_engine is None:
             self._init_rag()
         if self._kt_engine is None:
             return []
+        await self._ensure_kt_indexed()
         return self._kt_engine.list_courses()
 
     async def get_course_detail(self, course_id: str) -> Optional[dict]:

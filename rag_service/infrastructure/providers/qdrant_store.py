@@ -1,10 +1,13 @@
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 import uuid
 
 from rag_service.domain.models import Chunk, DocumentType, ServiceMetadata
 from rag_service.domain.protocols import VectorStore
 from rag_service.infrastructure.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class QdrantVectorStoreAdapter:
@@ -13,11 +16,15 @@ class QdrantVectorStoreAdapter:
     Provides semantic search with service-level metadata isolation and an in-memory fallback.
     """
 
-    def __init__(self, settings: Optional[Settings] = None) -> None:
+    def __init__(
+        self,
+        settings: Optional[Settings] = None,
+        collection_name: Optional[str] = None,
+    ) -> None:
         self.settings = settings or get_settings()
         self.url = self.settings.qdrant_url
         self.api_key = self.settings.qdrant_api_key
-        self.collection_name = self.settings.qdrant_collection_name
+        self.collection_name = collection_name or self.settings.qdrant_collection_name
         self.dimension = self.settings.embedding_dimension
         self._client = None
         self._memory_chunks: Dict[str, Chunk] = {}  # Local fallback when offline
@@ -25,16 +32,15 @@ class QdrantVectorStoreAdapter:
 
     def _init_client(self) -> None:
         if not self.url:
-            # Operates in local memory mode for testing without cloud credentials
             return
 
         try:
             from qdrant_client import QdrantClient
             from qdrant_client.http.models import Distance, VectorParams, PayloadSchemaType
 
-            self._client = QdrantClient(url=self.url, api_key=self.api_key)
+            port = None if self.url.startswith("https://") else 6333
+            self._client = QdrantClient(url=self.url, port=port, api_key=self.api_key)
 
-            # Ensure collection exists and has matching vector dimension
             collections = self._client.get_collections().collections
             exists = any(c.name == self.collection_name for c in collections)
             if not exists:
@@ -45,37 +51,43 @@ class QdrantVectorStoreAdapter:
             else:
                 try:
                     info = self._client.get_collection(self.collection_name)
-                    current_size = getattr(info.config.params.vectors, "size", None)
-                    if current_size and current_size != self.dimension:
-                        # Recreate collection to match new embedding model dimension
+                    remote_dim = info.config.params.vectors.size
+                    if remote_dim != self.dimension:
+                        logger.warning(
+                            f"Qdrant collection dimension mismatch ({remote_dim} != {self.dimension}). Recreating collection."
+                        )
                         self._client.delete_collection(self.collection_name)
                         self._client.create_collection(
                             collection_name=self.collection_name,
                             vectors_config=VectorParams(size=self.dimension, distance=Distance.COSINE),
                         )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to verify collection schema: {e}")
 
-            # Ensure index on 'service' for fast metadata filtering
             try:
                 self._client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name="service",
                     field_schema=PayloadSchemaType.KEYWORD,
                 )
+                self._client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="course_id",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
             except Exception:
                 pass
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to initialize Qdrant Cloud client: {e}")
             self._client = None
 
     async def upsert(self, chunks: List[Chunk]) -> int:
         """
-        Upsert chunks with embeddings and metadata payloads.
+        Store chunks with dense vector embeddings in Qdrant Cloud.
         """
         if not chunks:
             return 0
 
-        # When running offline or if Qdrant is unconfigured, store in memory
         if self._client is None:
             for c in chunks:
                 self._memory_chunks[c.id] = c
@@ -84,21 +96,16 @@ class QdrantVectorStoreAdapter:
         try:
             from qdrant_client.http.models import PointStruct
 
-            points: List[PointStruct] = []
+            points = []
             for c in chunks:
-                if not c.embedding:
+                if c.embedding is None:
                     continue
 
+                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, c.id))
                 payload = c.metadata.to_dict()
                 payload["content"] = c.content
                 payload["chunk_id"] = c.id
                 payload["index"] = c.index
-
-                # Ensure valid UUID for Qdrant point id
-                try:
-                    point_id = str(uuid.UUID(c.id))
-                except ValueError:
-                    point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, c.id))
 
                 points.append(
                     PointStruct(
@@ -125,27 +132,37 @@ class QdrantVectorStoreAdapter:
         query_vector: List[float],
         limit: int = 5,
         service_filter: Optional[str] = None,
+        filter_dict: Optional[Dict[str, Any]] = None,
         score_threshold: Optional[float] = None,
     ) -> List[Chunk]:
         """
-        Search nearest neighbor chunks with service-level filtering.
+        Search nearest neighbor chunks with service-level or arbitrary metadata filtering.
         """
         if self._client is None:
-            return self._memory_search(query_vector, limit, service_filter)
+            return self._memory_search(query_vector, limit, service_filter, filter_dict)
 
         try:
             from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
-            q_filter: Optional[Filter] = None
+            conditions = []
             if service_filter:
-                q_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="service",
-                            match=MatchValue(value=service_filter),
-                        )
-                    ]
+                conditions.append(
+                    FieldCondition(
+                        key="service",
+                        match=MatchValue(value=service_filter),
+                    )
                 )
+            if filter_dict:
+                for k, v in filter_dict.items():
+                    if v is not None:
+                        conditions.append(
+                            FieldCondition(
+                                key=k,
+                                match=MatchValue(value=v),
+                            )
+                        )
+
+            q_filter: Optional[Filter] = Filter(must=conditions) if conditions else None
 
             def _do_search():
                 if hasattr(self._client, "query_points"):
@@ -193,7 +210,11 @@ class QdrantVectorStoreAdapter:
                     endpoint=payload.get("endpoint"),
                     start_line=payload.get("start_line"),
                     end_line=payload.get("end_line"),
-                    extra=payload,
+                    git_commit=payload.get("git_commit"),
+                    extra={k: v for k, v in payload.items() if k not in {
+                        "service", "document_type", "source", "file_path", "language",
+                        "package", "class_name", "method_name", "endpoint", "start_line", "end_line", "git_commit"
+                    }},
                 )
 
                 chunks.append(
@@ -207,25 +228,34 @@ class QdrantVectorStoreAdapter:
 
             return chunks
         except Exception as e:
-            raise RuntimeError(f"Qdrant search failed: {e}") from e
+            logger.error(f"Qdrant search failed, falling back to local memory: {e}")
+            return self._memory_search(query_vector, limit, service_filter, filter_dict)
 
     def _memory_search(
         self,
         query_vector: List[float],
-        limit: int,
-        service_filter: Optional[str],
+        limit: int = 5,
+        service_filter: Optional[str] = None,
+        filter_dict: Optional[Dict[str, Any]] = None,
     ) -> List[Chunk]:
-        """Cosine similarity search for in-memory chunks."""
-        matched: List[Chunk] = []
+        matched = []
         for c in self._memory_chunks.values():
             if service_filter and c.metadata.service != service_filter:
                 continue
+            if filter_dict:
+                meta_dict = c.metadata.to_dict()
+                match = True
+                for k, v in filter_dict.items():
+                    if meta_dict.get(k) != v:
+                        match = False
+                        break
+                if not match:
+                    continue
             matched.append(c)
 
         if not query_vector or not matched:
             return matched[:limit]
 
-        # Calculate cosine similarities
         def cosine_sim(v1: List[float], v2: List[float]) -> float:
             if not v1 or not v2 or len(v1) != len(v2):
                 return 0.0

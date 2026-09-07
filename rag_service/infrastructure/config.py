@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = Field(
         default_factory=lambda: os.getenv("QDRANT_COLLECTION_NAME", "engineering_knowledge_base")
     )
+    qdrant_kt_collection_name: str = Field(
+        default_factory=lambda: os.getenv("QDRANT_KT_COLLECTION_NAME", "knowledge_cafe_collection")
+    )
     qdrant_embedding_model: str = Field(
         default_factory=lambda: os.getenv(
             "QDRANT_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
