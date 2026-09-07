@@ -19,6 +19,7 @@ import {
   Share2,
   Cpu,
   UploadCloud,
+  HeartHandshake,
 } from 'lucide-react';
 
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
@@ -29,6 +30,7 @@ import { ConversationHistoryDrawer } from '@/components/chat/ConversationHistory
 import { ShareModal } from '@/components/chat/ShareModal';
 import { DocumentViewerModal } from '@/components/chat/DocumentViewerModal';
 import { KnowledgeCafeView } from '@/components/kt/KnowledgeCafeView';
+import { SaathiView } from '@/components/saathi/SaathiView';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import apiClient, { ApiError } from '@/lib/api/client';
@@ -117,7 +119,7 @@ function DashboardApp() {
   } | null>(null);
   const [forkNotification, setForkNotification] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<{ message: string; requestId?: string } | null>(null);
-  const [activeMode, setActiveMode] = useState<'chat' | 'knowledge-cafe'>('chat');
+  const [activeMode, setActiveMode] = useState<'chat' | 'knowledge-cafe' | 'saathi'>('chat');
   const [activeSourceModal, setActiveSourceModal] = useState<{
     isOpen: boolean;
     file: string;
@@ -488,6 +490,26 @@ function DashboardApp() {
                 KT
               </span>
             </button>
+            <button
+              onClick={() => setActiveMode('saathi')}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                activeMode === 'saathi'
+                  ? 'bg-gradient-to-r from-[#97144d] to-[#800e3e] text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <HeartHandshake className="w-4 h-4" />
+              <span>Saathi</span>
+              <span
+                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                  activeMode === 'saathi'
+                    ? 'bg-white/25 text-white'
+                    : 'bg-rose-100 text-[#97144d]'
+                }`}
+              >
+                RM Handover
+              </span>
+            </button>
           </div>
 
           {/* Right Actions: Knowledge Ingest, History, New Chat, User */}
@@ -587,8 +609,10 @@ function DashboardApp() {
           </div>
         )}
 
-        {/* Dynamic Body: Knowledge Cafe vs Chat / Home Screen */}
-        {activeMode === 'knowledge-cafe' ? (
+        {/* Dynamic Body: Saathi vs Knowledge Cafe vs Chat / Home Screen */}
+        {activeMode === 'saathi' ? (
+          <SaathiView />
+        ) : activeMode === 'knowledge-cafe' ? (
           <KnowledgeCafeView
             selectedModel={selectedModel}
             onViewSource={(file, service) => {

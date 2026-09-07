@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend_service.app.api.middleware.request_id import RequestIdMiddleware, get_current_request_id
-from backend_service.app.api.routes import auth, documents, feedback, health, knowledge, kt, models, query, services
+from backend_service.app.api.routes import auth, documents, feedback, health, knowledge, kt, models, query, saathi, services
 from backend_service.app.api.schemas.common import ErrorResponse
 from backend_service.app.domain.exceptions.base import (
     AuthenticationException,
@@ -198,6 +198,7 @@ def create_app() -> FastAPI:
     api_v1.include_router(documents.router)
     api_v1.include_router(models.router)
     api_v1.include_router(kt.router)
+    api_v1.include_router(saathi.router)
 
     app.include_router(api_v1)
 

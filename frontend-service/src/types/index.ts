@@ -361,3 +361,105 @@ export interface EnrollResult {
   current_lesson?: LessonSummary;
 }
 
+// ============================================================================
+// Saathi — Relationship Continuity Types
+// ============================================================================
+
+export type ClientTier =
+  | 'Burgundy'
+  | 'Burgundy Private'
+  | 'NRI Elite'
+  | 'Axis Wealth'
+  | 'Priority Banking';
+
+export type TransitionStatus =
+  | 'initiated'
+  | 'customer_review'
+  | 'customer_confirmed'
+  | 'handover_active'
+  | 'completed';
+
+export type ActionPriority = 'high' | 'medium' | 'low';
+export type ActionStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface CRMInteraction {
+  id: string;
+  date: string;
+  channel: string;
+  rm_name: string;
+  summary: string;
+  tags: string[];
+}
+
+export interface TransitionActionItem {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: ActionPriority;
+  status: ActionStatus;
+  sla_date: string;
+  assigned_to: string;
+}
+
+export interface RelationshipBrief {
+  client_sentiment: string;
+  executive_summary: string;
+  family_and_lifestage: string[];
+  preferences_and_nuances: string[];
+  active_portfolio_summary: string;
+  key_discussion_topics: string[];
+  conversation_starter: string;
+  talking_points: string[];
+  synthesized_at: string;
+}
+
+export interface CustomerFeedback {
+  confirmed_at?: string | null;
+  customer_notes?: string | null;
+  corrected_items: string[];
+  has_verified: boolean;
+}
+
+export interface CustomerRelationship {
+  id: string;
+  name: string;
+  tier: ClientTier;
+  segment_description: string;
+  city: string;
+  account_number_masked: string;
+  aum_display: string;
+  tenure_years: number;
+  avatar_color: string;
+  previous_rm_name: string;
+  previous_rm_role: string;
+  transfer_reason: string;
+  new_rm_name: string;
+  new_rm_role: string;
+  new_rm_phone: string;
+  new_rm_email: string;
+  status: TransitionStatus;
+  transition_date: string;
+  interactions: CRMInteraction[];
+  action_items: TransitionActionItem[];
+  brief?: RelationshipBrief | null;
+  feedback?: CustomerFeedback | null;
+}
+
+export interface CustomerSummaryDTO {
+  id: string;
+  name: string;
+  tier: ClientTier;
+  city: string;
+  account_number_masked: string;
+  aum_display: string;
+  tenure_years: number;
+  previous_rm_name: string;
+  new_rm_name: string;
+  status: TransitionStatus;
+  transition_date: string;
+  avatar_color: string;
+  pending_actions_count: number;
+}
+
+

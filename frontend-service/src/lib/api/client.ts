@@ -29,6 +29,11 @@ import type {
   SharedConversationDetailResponse,
   SignupRequest,
   SourceCitation,
+  ActionStatus,
+  CustomerRelationship,
+  CustomerSummaryDTO,
+  RelationshipBrief,
+  TransitionActionItem,
   User,
 } from '@/types';
 
@@ -655,6 +660,93 @@ export class ApiClient {
     return this.fetch<DocumentDetailResponse>(
       `/api/v1/kt/courses/${encodeURIComponent(courseId)}/documents?${params.toString()}`
     );
+  }
+
+  // ==========================================================================
+  // Saathi — Relationship Continuity Methods
+  // ==========================================================================
+
+  /**
+   * List all customer transition cases
+   */
+  async listSaathiCustomers(): Promise<CustomerSummaryDTO[]> {
+    return this.fetch<CustomerSummaryDTO[]>('/api/v1/saathi/customers');
+  }
+
+  /**
+   * Retrieve full customer relationship profile with brief and actions
+   */
+  async getSaathiCustomer(customerId: string): Promise<CustomerRelationship> {
+    return this.fetch<CustomerRelationship>(`/api/v1/saathi/customers/${encodeURIComponent(customerId)}`);
+  }
+
+  /**
+   * Trigger AI synthesis of the Relationship Brief
+   */
+  async synthesizeSaathiBrief(customerId: string): Promise<RelationshipBrief> {
+    return this.fetch<RelationshipBrief>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/synthesize-brief`,
+      { method: 'POST' }
+    );
+  }
+
+  /**
+   * Submit customer verification notes or corrections
+   */
+  async submitSaathiFeedback(
+    customerId: string,
+    notes: string,
+    correctedItems?: string[]
+  ): Promise<CustomerRelationship> {
+    return this.fetch<CustomerRelationship>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/customer-feedback`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ customer_notes: notes, corrected_items: correctedItems }),
+      }
+    );
+  }
+
+  /**
+   * Update status of an open transition action item
+   */
+  async updateSaathiAction(
+    customerId: string,
+    actionId: string,
+    status: ActionStatus
+  ): Promise<TransitionActionItem> {
+    return this.fetch<TransitionActionItem>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/actions/${encodeURIComponent(actionId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }
+    );
+  }
+
+  /**
+   * Complete RM handover
+   */
+  async completeSaathiHandover(
+    customerId: string,
+    newRmNotes?: string
+  ): Promise<CustomerRelationship> {
+    return this.fetch<CustomerRelationship>(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/complete-handover`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ new_rm_notes: newRmNotes }),
+      }
+    );
+  }
+
+  /**
+   * Reset Saathi demo data
+   */
+  async resetSaathiDemo(): Promise<{ status: string; message: string }> {
+    return this.fetch<{ status: string; message: string }>('/api/v1/saathi/reset-demo', {
+      method: 'POST',
+    });
   }
 }
 
