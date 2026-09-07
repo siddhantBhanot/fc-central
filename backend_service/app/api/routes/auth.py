@@ -21,6 +21,7 @@ async def signup(
         email=payload.email,
         password=payload.password,
         name=payload.name,
+        role=payload.role,
     )
     return TokenResponse(**result)
 
@@ -31,7 +32,7 @@ async def login(
     auth_service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
     """
-    Authenticate an existing engineer using email and password to receive a JWT access token.
+    Authenticate an existing user using email and password to receive a JWT access token.
     """
     result = await auth_service.login(
         email=payload.email,
@@ -51,6 +52,7 @@ async def get_current_user_profile(
         id=current_user.id,
         email=current_user.email,
         name=current_user.name,
+        role=current_user.role,
         created_at=current_user.created_at.isoformat(),
     )
 

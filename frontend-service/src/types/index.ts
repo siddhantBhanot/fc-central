@@ -223,6 +223,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  role?: 'developer' | 'banking_staff';
   created_at: string;
 }
 
@@ -236,6 +237,7 @@ export interface SignupRequest {
   email: string;
   password: string;
   name: string;
+  role?: 'developer' | 'banking_staff';
 }
 
 export interface LoginRequest {

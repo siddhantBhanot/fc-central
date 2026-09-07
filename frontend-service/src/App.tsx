@@ -119,7 +119,18 @@ function DashboardApp() {
   } | null>(null);
   const [forkNotification, setForkNotification] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<{ message: string; requestId?: string } | null>(null);
-  const [activeMode, setActiveMode] = useState<'chat' | 'knowledge-cafe' | 'saathi'>('chat');
+  const isBankingStaff = user?.role === 'banking_staff';
+  const [activeMode, setActiveMode] = useState<'chat' | 'knowledge-cafe' | 'saathi'>(() => {
+    return user?.role === 'banking_staff' ? 'saathi' : 'chat';
+  });
+
+  useEffect(() => {
+    if (isBankingStaff && activeMode === 'chat') {
+      setActiveMode('saathi');
+    } else if (!isBankingStaff && activeMode === 'saathi') {
+      setActiveMode('chat');
+    }
+  }, [isBankingStaff, activeMode]);
   const [activeSourceModal, setActiveSourceModal] = useState<{
     isOpen: boolean;
     file: string;
@@ -445,94 +456,134 @@ function DashboardApp() {
         {/* Persistent Top Header */}
         <header className="px-6 md:px-10 py-5 flex items-center justify-between border-b border-slate-100 bg-white shrink-0">
           {/* Freecharge Logo on Left */}
-          <button
-            onClick={handleResetHome}
-            className="flex items-center text-left group cursor-pointer focus:outline-none"
-            title="Return to Home"
-          >
-            <img
-              src={fcLogo}
-              alt="FreeCharge Biz by Axis Bank"
-              className="h-8 md:h-9 w-auto object-contain transition-transform group-hover:scale-[1.02]"
-            />
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={handleResetHome}
+              className="flex items-center text-left group cursor-pointer focus:outline-none"
+              title="Return to Home"
+            >
+              <img
+                src={fcLogo}
+                alt="FreeCharge Biz by Axis Bank"
+                className="h-8 md:h-9 w-auto object-contain transition-transform group-hover:scale-[1.02]"
+              />
+            </button>
+            <span className="text-[10px] font-bold tracking-wider uppercase hidden xl:inline-block border-l border-slate-200 pl-2.5 self-center py-0.5 text-slate-400">
+              {isBankingStaff ? 'Banking & Wealth Workspace' : 'Engineering Intelligence'}
+            </span>
+          </div>
 
-          {/* Center Mode Switcher: Dev Chat vs Knowledge Cafe */}
+          {/* Center Mode Switcher: Role-Based Segregated Experience (Option B) */}
           <div className="flex items-center bg-slate-100/90 p-1.5 rounded-full border border-slate-200/80 shadow-2xs gap-1">
-            <button
-              onClick={() => setActiveMode('chat')}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                activeMode === 'chat'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>Dev Chat</span>
-            </button>
-            <button
-              onClick={() => setActiveMode('knowledge-cafe')}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                activeMode === 'knowledge-cafe'
-                  ? 'bg-[#f05a28] text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <GraduationCap className="w-4 h-4" />
-              <span>Knowledge Cafe</span>
-              <span
-                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
-                  activeMode === 'knowledge-cafe'
-                    ? 'bg-white/25 text-white'
-                    : 'bg-orange-100 text-[#f05a28]'
-                }`}
-              >
-                KT
-              </span>
-            </button>
-            <button
-              onClick={() => setActiveMode('saathi')}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                activeMode === 'saathi'
-                  ? 'bg-gradient-to-r from-[#97144d] to-[#800e3e] text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <HeartHandshake className="w-4 h-4" />
-              <span>Saathi</span>
-              <span
-                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
-                  activeMode === 'saathi'
-                    ? 'bg-white/25 text-white'
-                    : 'bg-rose-100 text-[#97144d]'
-                }`}
-              >
-                RM Handover
-              </span>
-            </button>
+            {isBankingStaff ? (
+              <>
+                {/* Management / Banking Staff: Saathi + KT Sessions */}
+                <button
+                  onClick={() => setActiveMode('saathi')}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    activeMode === 'saathi'
+                      ? 'bg-gradient-to-r from-[#97144d] to-[#800e3e] text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <HeartHandshake className="w-4 h-4" />
+                  <span>Saathi</span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                      activeMode === 'saathi'
+                        ? 'bg-white/25 text-white'
+                        : 'bg-rose-100 text-[#97144d]'
+                    }`}
+                  >
+                    RM Handover
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveMode('knowledge-cafe')}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    activeMode === 'knowledge-cafe'
+                      ? 'bg-[#f05a28] text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Knowledge Cafe</span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                      activeMode === 'knowledge-cafe'
+                        ? 'bg-white/25 text-white'
+                        : 'bg-orange-100 text-[#f05a28]'
+                    }`}
+                  >
+                    KT
+                  </span>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Technical Team: Dev Chat + KT Sessions */}
+                <button
+                  onClick={() => setActiveMode('chat')}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    activeMode === 'chat'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Dev Chat</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveMode('knowledge-cafe')}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    activeMode === 'knowledge-cafe'
+                      ? 'bg-[#f05a28] text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Knowledge Cafe</span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                      activeMode === 'knowledge-cafe'
+                        ? 'bg-white/25 text-white'
+                        : 'bg-orange-100 text-[#f05a28]'
+                    }`}
+                  >
+                    KT
+                  </span>
+                </button>
+              </>
+            )}
           </div>
 
           {/* Right Actions: Knowledge Ingest, History, New Chat, User */}
           <div className="flex items-center gap-2.5 sm:gap-3.5">
-            {/* Knowledge Ingestion Modal Trigger */}
-            <button
-              onClick={() => setIsIngestionModalOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="Upload and stage documentation or courses"
-            >
-              <UploadCloud className="w-4 h-4 text-[#f05a28]" />
-              <span className="hidden md:inline">Upload Docs</span>
-            </button>
+            {/* Knowledge Ingestion Modal Trigger (Engineering only) */}
+            {!isBankingStaff && (
+              <button
+                onClick={() => setIsIngestionModalOpen(true)}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Upload and stage documentation or courses"
+              >
+                <UploadCloud className="w-4 h-4 text-[#f05a28]" />
+                <span className="hidden md:inline">Upload Docs</span>
+              </button>
+            )}
 
-            {/* Conversation History Drawer Trigger */}
-            <button
-              onClick={() => setIsHistoryDrawerOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="View conversation history"
-            >
-              <History className="w-4 h-4 text-slate-500" />
-              <span className="hidden md:inline">History</span>
-            </button>
+            {/* Conversation History Drawer Trigger (Engineering only) */}
+            {!isBankingStaff && (
+              <button
+                onClick={() => setIsHistoryDrawerOpen(true)}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="View conversation history"
+              >
+                <History className="w-4 h-4 text-slate-500" />
+                <span className="hidden md:inline">History</span>
+              </button>
+            )}
 
             {/* Share Button when conversation is active */}
             {currentConversationId && isChatActive && (
@@ -561,14 +612,19 @@ function DashboardApp() {
             <div className="flex items-center gap-2.5 pl-3 sm:pl-4 border-l border-slate-200 ml-1">
               <div
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200/80 text-xs"
-                title={`Signed in as ${user?.email}`}
+                title={`Signed in as ${user?.email} (${isBankingStaff ? 'Banking & Wealth' : 'Technical Team'})`}
               >
-                <span className="w-5 h-5 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center justify-center uppercase shadow-xs">
-                  {user?.name ? user.name.charAt(0) : 'E'}
+                <span className={`w-5 h-5 rounded-full ${isBankingStaff ? 'bg-[#97144d]' : 'bg-rose-600'} text-white font-bold text-[10px] flex items-center justify-center uppercase shadow-xs`}>
+                  {user?.name ? user.name.charAt(0) : (isBankingStaff ? 'B' : 'E')}
                 </span>
-                <span className="font-semibold text-slate-700 max-w-[120px] truncate hidden md:inline">
-                  {user?.name || user?.email}
-                </span>
+                <div className="flex flex-col text-left">
+                  <span className="font-semibold text-slate-700 max-w-[120px] truncate hidden md:inline leading-tight">
+                    {user?.name || user?.email}
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase hidden md:inline leading-none">
+                    {isBankingStaff ? 'Banking Staff' : 'Engineer'}
+                  </span>
+                </div>
               </div>
 
               <button

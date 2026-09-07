@@ -38,6 +38,7 @@ class Database:
                     id TEXT PRIMARY KEY,
                     email TEXT UNIQUE NOT NULL,
                     name TEXT NOT NULL,
+                    role TEXT DEFAULT 'developer',
                     password_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
@@ -132,6 +133,15 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_kt_enrollments_user ON kt_course_enrollments(user_id);
                 CREATE INDEX IF NOT EXISTS idx_kt_doubts_lesson ON kt_lesson_doubts(course_id, lesson_id);
             """)
+
+            # Ensure role column exists in users
+            cursor_users = await conn.execute("PRAGMA table_info(users);")
+            user_columns = [row["name"] for row in await cursor_users.fetchall()]
+            if "role" not in user_columns:
+                try:
+                    await conn.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'developer';")
+                except Exception:
+                    pass
 
             # Ensure user_id, share_token, and forked_from columns exist if table was created in an earlier schema version
             cursor = await conn.execute("PRAGMA table_info(conversations);")
