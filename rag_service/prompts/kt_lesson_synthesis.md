@@ -33,7 +33,7 @@ The course creator has provided the following dedicated context files specifical
 4. **Structured Lesson Flow**:
    Structure your lesson with clear markdown headings that fit the actual material provided:
    - `## 1. Overview & Objectives`: Why this topic is important and what problem it solves.
-   - `## 2. Core Concepts & Architecture`: The fundamental principles, lifecycles, and mental models. Include a clean Mermaid diagram (` ```mermaid ... ``` `) if describing flows, lifecycles, or relationships documented in the context.
+   - `## 2. Core Concepts & Architecture`: The fundamental principles, lifecycles, and mental models. Include a clean Mermaid diagram (` ```mermaid ... ``` `) if describing flows, lifecycles, or relationships documented in the context. (CRITICAL Mermaid Syntax Rule: Always use standard ASCII `-->` arrows, never unicode dashes or em-dashes `—>`. Always wrap node text in double quotes if it contains spaces or special characters like `A["Plan & Freeze"] --> B["SIT / QA"]`).
    - `## 3. Workflow & Technical Deep Dive`: Detailed walkthrough of the components, parameters, execution stages, or logic documented in the context files. (Only show code/script snippets if literally present in the context files).
    - `## 4. Execution Flow & Operational Nuances`: Real-world operation, debugging pointers, failure modes, or best practices documented in the context files.
 

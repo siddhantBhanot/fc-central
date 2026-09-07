@@ -35,6 +35,149 @@ function initMermaid() {
   }
 }
 
+/**
+ * Intelligently sanitizes and repairs LLM-generated Mermaid diagrams:
+ * 1. Strips markdown fences and extraneous wrappers.
+ * 2. Normalizes Unicode dashes, em-dashes, en-dashes, and unicode arrows to valid Mermaid connectors.
+ * 3. Replaces single ASCII arrows `->` with standard `-->`.
+ * 4. Auto-quotes node labels containing punctuation, parentheses, slashes, or ampersands (`&`, `/`, `()`).
+ * 5. Quotes unquoted subgraph labels containing spaces or special characters.
+ * 6. Ensures unclosed subgraphs are balanced with `end`.
+ * 7. Ensures missing directions (e.g. `flowchart` -> `flowchart TD`) are filled in.
+ */
+export function sanitizeMermaidChart(raw: string): string {
+  if (!raw) return '';
+  let text = raw.trim();
+
+  // 1. Strip markdown code block wrappers if present
+  text = text.replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/\n?\s*```$/, '').trim();
+
+  // 2. Strip invisible zero-width characters and normalize unicode spaces
+  text = text.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+  text = text.replace(/[\u00A0\u202F\u2007\u2060]/g, ' ');
+
+  // 3. Normalize Unicode dashes & arrows
+  // Non-breaking hyphen (\u2011), Hyphen (\u2010), Figure dash (\u2012), En-dash (\u2013), Em-dash (\u2014), Horizontal bar (\u2015), Box-drawings light horizontal (\u2500)
+  text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]+>/g, '-->');
+  text = text.replace(/<[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]+>/g, '<-->');
+  text = text.replace(/<[\u2010\u2011\u2012\u2013\u2014\u2500]+/g, '<--');
+  text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]{2,}/g, '--');
+  text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]/g, '-');
+  // Standalone unicode right arrows: →, ➔, ➜, ⟶
+  text = text.replace(/[\u2192\u2794\u279c\u27f6]/g, '-->');
+  // Standalone unicode double arrows: ⇒, ⟹
+  text = text.replace(/[\u21d2\u27f9]/g, '==>');
+
+  // 3. Single dash arrow: replace " -> " or "] -> " or ") -> " with " --> "
+  text = text.replace(/(\s)->(\s)/g, '$1-->$2');
+  text = text.replace(/(\])\s*->(\s)/g, '$1 -->$2');
+  text = text.replace(/(\))\s*->(\s)/g, '$1 -->$2');
+  text = text.replace(/(\})\s*->(\s)/g, '$1 -->$2');
+
+  // 4. Direction validation
+  // If line starts with bare "flowchart" or "graph" without direction, append TD
+  text = text.replace(/^(flowchart|graph)\s*$/m, '$1 TD');
+
+  // 5. Line-by-line label quoting and subgraph normalization
+  const lines = text.split('\n');
+  let openSubgraphs = 0;
+
+  const sanitizedLines = lines.map((line) => {
+    let l = line;
+    const trimmed = l.trim();
+
+    // Skip comments
+    if (trimmed.startsWith('%%')) return l;
+
+    // Track and sanitize subgraphs
+    if (/^\s*subgraph\b/i.test(l)) {
+      openSubgraphs++;
+      l = l.replace(/^(\s*subgraph\s+)(.+)$/i, (match, prefix, rest) => {
+        const title = rest.trim();
+        if ((title.startsWith('"') && title.endsWith('"')) || (title.startsWith('[') && title.endsWith(']'))) {
+          return match;
+        }
+        if (/[^a-zA-Z0-9_-]/.test(title)) {
+          return `${prefix}"${title.replace(/"/g, "'")}"`;
+        }
+        return match;
+      });
+      return l;
+    }
+
+    if (/^\s*end\b/i.test(l)) {
+      if (openSubgraphs > 0) openSubgraphs--;
+      return l;
+    }
+
+    // Edge labels: |label| -> |"label"| (prevents tokenizer syntax errors when edge labels contain parens or special chars)
+    l = l.replace(/\|([^|\n]+)\|/g, (match, content) => {
+      const cTrim = content.trim();
+      if ((cTrim.startsWith('"') && cTrim.endsWith('"')) || (cTrim.startsWith("'") && cTrim.endsWith("'"))) {
+        return match;
+      }
+      const safe = cTrim.replace(/"/g, "'");
+      return `|"${safe}"|`;
+    });
+
+    const quoteContent = (content: string) => {
+      const cTrim = content.trim();
+      if ((cTrim.startsWith('"') && cTrim.endsWith('"')) || (cTrim.startsWith("'") && cTrim.endsWith("'"))) {
+        return cTrim;
+      }
+      const safe = cTrim.replace(/"/g, "'");
+      return `"${safe}"`;
+    };
+
+    // Compound shapes first:
+    // Cylinder: ID[(content)]
+    l = l.replace(/([a-zA-Z0-9_-]+)\[\(([^)\n]+)\)\]/g, (_match, id, content) => {
+      return `${id}[(${quoteContent(content)})]`;
+    });
+
+    // Stadium: ID([content])
+    l = l.replace(/([a-zA-Z0-9_-]+)\(\[([^\]\n]+)\]\)/g, (_match, id, content) => {
+      return `${id}([${quoteContent(content)}])`;
+    });
+
+    // Subroutine: ID[[content]]
+    l = l.replace(/([a-zA-Z0-9_-]+)\[\[([^\]\n]+)\]\]/g, (_match, id, content) => {
+      return `${id}[[${quoteContent(content)}]]`;
+    });
+
+    // Hexagon: ID{{content}}
+    l = l.replace(/([a-zA-Z0-9_-]+)\{\{([^}\n]+)\}\}/g, (_match, id, content) => {
+      return `${id}{{${quoteContent(content)}}}`;
+    });
+
+    // Diamond: ID{content}
+    l = l.replace(/([a-zA-Z0-9_-]+)\{([^}\n]+)\}/g, (_match, id, content) => {
+      return `${id}{${quoteContent(content)}}`;
+    });
+
+    // Round: ID(content)
+    l = l.replace(/([a-zA-Z0-9_-]+)\(([^)\n]+)\)/g, (match, id, content) => {
+      if (['subgraph', 'classDef', 'style', 'click'].includes(id)) return match;
+      return `${id}(${quoteContent(content)})`;
+    });
+
+    // Rectangle: ID[content]
+    l = l.replace(/([a-zA-Z0-9_-]+)\[([^\]\n]+)\]/g, (_match, id, content) => {
+      return `${id}[${quoteContent(content)}]`;
+    });
+
+    return l;
+  });
+
+  // Balance any missing `end` for unclosed subgraphs
+  while (openSubgraphs > 0) {
+    sanitizedLines.push('  end');
+    openSubgraphs--;
+  }
+
+  return sanitizedLines.join('\n');
+}
+
 export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ chart }) => {
   const reactId = useId();
   // Generate clean DOM-compatible ID
@@ -51,7 +194,7 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ chart }) => {
     let isCancelled = false;
 
     const renderChart = async () => {
-      const cleanChart = chart.trim();
+      const cleanChart = sanitizeMermaidChart(chart);
       if (!cleanChart) {
         setSvg('');
         setIsRendering(false);
@@ -64,8 +207,25 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ chart }) => {
       try {
         // Unique container ID per render cycle to avoid Mermaid collision
         const uniqueRenderId = `${elementId}-${Date.now()}`;
-        const { svg: renderedSvg } = await mermaid.render(uniqueRenderId, cleanChart);
-        if (!isCancelled) {
+        let renderedSvg: string | null = null;
+
+        try {
+          const res = await mermaid.render(uniqueRenderId, cleanChart);
+          renderedSvg = res.svg;
+        } catch (firstErr) {
+          // If first render fails, attempt alternate graph/flowchart keyword or basic fallback
+          const altChart = cleanChart.startsWith('flowchart')
+            ? cleanChart.replace(/^flowchart\b/, 'graph')
+            : cleanChart.startsWith('graph')
+            ? cleanChart.replace(/^graph\b/, 'flowchart')
+            : cleanChart;
+
+          const retryRenderId = `${elementId}-retry-${Date.now()}`;
+          const res = await mermaid.render(retryRenderId, altChart);
+          renderedSvg = res.svg;
+        }
+
+        if (!isCancelled && renderedSvg) {
           setSvg(renderedSvg);
           setError(null);
           setIsRendering(false);
