@@ -43,16 +43,21 @@ class DirectRAGClient(RAGClientProtocol):
             from rag_service.infrastructure.providers.openai_llm import OpenAiClientProvider
             from rag_service.infrastructure.providers.qdrant_embedding import QdrantEmbeddingProvider
             from rag_service.infrastructure.providers.qdrant_store import QdrantVectorStoreAdapter
+            from rag_service.infrastructure.providers.multi_provider import MultiProviderLLMAdapter
             from rag_service.ingestion.pipeline import IngestionPipeline
             from rag_service.pipeline.rag_engine import RAGPipeline
             from rag_service.prompts.loader import PromptLoader
 
             settings = get_rag_settings()
-            has_aws = bool(settings.aws_access_key_id and settings.aws_secret_access_key)
+            has_aws = bool(
+                settings.aws_bearer_token_bedrock
+                or (settings.aws_access_key_id and settings.aws_secret_access_key)
+            )
             has_openai = bool(settings.openai_api_key)
+            has_groq = bool(settings.groq_api_key)
 
             # Embedder
-            if has_aws:
+            if settings.aws_access_key_id and settings.aws_secret_access_key:
                 embedding_provider = BedrockEmbeddingProvider(settings)
             else:
                 embedding_provider = QdrantEmbeddingProvider(settings)
@@ -61,11 +66,28 @@ class DirectRAGClient(RAGClientProtocol):
             settings.embedding_dimension = embedding_provider.dimension
             vector_store = QdrantVectorStoreAdapter(settings)
 
-            # LLM Provider
-            if has_aws:
-                llm_provider = BedrockLLMProvider(settings)
-            elif has_openai:
-                llm_provider = OpenAiClientProvider(settings)
+            # LLM Provider with Multi-Provider Routing
+            bedrock_provider = BedrockLLMProvider(settings) if has_aws else None
+            openai_provider = OpenAiClientProvider(settings) if has_openai else None
+
+            if bedrock_provider and openai_provider:
+                default_p = openai_provider if has_groq else bedrock_provider
+                multi_adapter = MultiProviderLLMAdapter(
+                    default_provider=default_p,
+                    providers={
+                        "groq": openai_provider,
+                        "openai": openai_provider,
+                        "bedrock": bedrock_provider,
+                    },
+                )
+                for bm in settings.get_configured_bedrock_models():
+                    multi_adapter.register_model(bm["id"], "bedrock")
+                multi_adapter.register_model(settings.bedrock_llm_model_id, "bedrock")
+                llm_provider = multi_adapter
+            elif bedrock_provider:
+                llm_provider = bedrock_provider
+            elif openai_provider:
+                llm_provider = openai_provider
             else:
                 # Standalone fallback if neither is present
                 from rag_service.run_local import LocalSimulatedLLM
@@ -128,90 +150,95 @@ class DirectRAGClient(RAGClientProtocol):
 
         has_groq = bool(settings.groq_api_key)
         has_openai = bool(settings.openai_api_key)
-        has_aws = bool(settings.aws_access_key_id and settings.aws_secret_access_key)
+        has_aws = bool(
+            settings.aws_bearer_token_bedrock
+            or (settings.aws_access_key_id and settings.aws_secret_access_key)
+        )
 
-        default_model = settings.openai_model_id if (has_groq or has_openai) else settings.bedrock_llm_model_id
+        models: List[dict] = []
 
         if has_groq or (has_openai and "groq" in (settings.openai_base_url or "").lower()):
-            return [
+            models.extend([
                 {
                     "id": "openai/gpt-oss-120b",
                     "name": "GPT-OSS 120B",
                     "provider": "groq",
                     "description": "High-capacity open-weight reasoning model via Groq",
-                    "is_default": default_model == "openai/gpt-oss-120b",
                 },
                 {
                     "id": "openai/gpt-oss-20b",
                     "name": "GPT-OSS 20B",
                     "provider": "groq",
                     "description": "Fast low-latency open-weight reasoning model",
-                    "is_default": default_model == "openai/gpt-oss-20b",
                 },
                 {
                     "id": "qwen/qwen3.8-27b",
                     "name": "Qwen 3.8 27B",
                     "provider": "groq",
                     "description": "Advanced multilingual reasoning model",
-                    "is_default": default_model == "qwen/qwen3.8-27b",
                 },
                 {
                     "id": "qwen/qwen3.6-27b",
                     "name": "Qwen 3.6 27B",
                     "provider": "groq",
                     "description": "High-speed analytical reasoning model",
-                    "is_default": default_model == "qwen/qwen3.6-27b",
                 },
                 {
                     "id": "groq/compound",
                     "name": "Groq Compound",
                     "provider": "groq",
                     "description": "Groq optimized multi-turn reasoning engine",
-                    "is_default": default_model == "groq/compound",
                 },
                 {
                     "id": "groq/compound-mini",
                     "name": "Groq Compound Mini",
                     "provider": "groq",
                     "description": "Ultra-fast low-latency inference engine",
-                    "is_default": default_model == "groq/compound-mini",
                 },
-            ]
+            ])
         elif has_openai:
-            return [
+            models.extend([
                 {
                     "id": "gpt-4o",
                     "name": "GPT-4o",
                     "provider": "openai",
                     "description": "OpenAI flagship omni-model",
-                    "is_default": default_model == "gpt-4o",
                 },
                 {
                     "id": "gpt-4o-mini",
                     "name": "GPT-4o Mini",
                     "provider": "openai",
                     "description": "Fast and efficient OpenAI model",
-                    "is_default": default_model == "gpt-4o-mini",
                 },
-            ]
-        elif has_aws:
-            return [
-                {
-                    "id": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-                    "name": "Claude 3.5 Sonnet",
-                    "provider": "bedrock",
-                    "description": "High-intelligence AWS Bedrock Claude model",
-                    "is_default": default_model == "anthropic.claude-3-5-sonnet-20240620-v1:0",
-                },
-                {
-                    "id": "anthropic.claude-3-haiku-20240307-v1:0",
-                    "name": "Claude 3 Haiku",
-                    "provider": "bedrock",
-                    "description": "Fast and lightweight AWS Bedrock model",
-                    "is_default": default_model == "anthropic.claude-3-haiku-20240307-v1:0",
-                },
-            ]
-        else:
+            ])
+
+        if has_aws:
+            configured_bedrock = settings.get_configured_bedrock_models()
+            if configured_bedrock:
+                models.extend(configured_bedrock)
+            else:
+                models.extend([
+                    {
+                        "id": settings.bedrock_llm_model_id or "qwen.qwen3-235b-a22b-2507",
+                        "name": "Qwen 3 235B A22B",
+                        "provider": "bedrock",
+                        "description": "Advanced open-weight reasoning model on AWS Bedrock",
+                    },
+                    {
+                        "id": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+                        "name": "Claude 3.5 Sonnet",
+                        "provider": "bedrock",
+                        "description": "High-intelligence AWS Bedrock Claude model",
+                    },
+                    {
+                        "id": "anthropic.claude-3-haiku-20240307-v1:0",
+                        "name": "Claude 3 Haiku",
+                        "provider": "bedrock",
+                        "description": "Fast and lightweight AWS Bedrock model",
+                    },
+                ])
+
+        if not models:
             return [
                 {
                     "id": "local-simulated-engine",
@@ -221,6 +248,26 @@ class DirectRAGClient(RAGClientProtocol):
                     "is_default": True,
                 }
             ]
+
+        # Determine default model
+        target_default = None
+        if settings.llm_provider and settings.llm_provider.lower() == "bedrock" and has_aws:
+            target_default = settings.bedrock_llm_model_id
+        elif has_groq or has_openai:
+            target_default = settings.openai_model_id
+
+        found_default = False
+        for m in models:
+            if target_default and m["id"] == target_default:
+                m["is_default"] = True
+                found_default = True
+            else:
+                m["is_default"] = False
+
+        if not found_default and models:
+            models[0]["is_default"] = True
+
+        return models
 
     async def query(
         self,

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from pydantic import Field
 
 try:
@@ -55,15 +55,92 @@ class Settings(BaseSettings):
     vector_store_type: str = Field(default_factory=lambda: os.getenv("VECTOR_STORE", "qdrant"))
 
     # AWS Bedrock Settings
-    aws_region: str = Field(default_factory=lambda: os.getenv("AWS_REGION", "us-east-1"))
+    aws_region: str = Field(default_factory=lambda: os.getenv("AWS_REGION", "ap-south-1"))
     aws_access_key_id: Optional[str] = Field(default_factory=lambda: os.getenv("AWS_ACCESS_KEY_ID"))
     aws_secret_access_key: Optional[str] = Field(default_factory=lambda: os.getenv("AWS_SECRET_ACCESS_KEY"))
+    aws_bearer_token_bedrock: Optional[str] = Field(
+        default_factory=lambda: os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+    )
     bedrock_llm_model_id: str = Field(
-        default_factory=lambda: os.getenv("BEDROCK_LLM_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0")
+        default_factory=lambda: os.getenv("BEDROCK_LLM_MODEL_ID", "qwen.qwen3-235b-a22b-2507")
+    )
+    bedrock_models: str = Field(
+        default_factory=lambda: os.getenv(
+            "BEDROCK_MODELS",
+            "qwen.qwen3-235b-a22b-2507:Qwen 3 235B A22B:Advanced open-weight reasoning model on AWS Bedrock,"
+            "anthropic.claude-3-5-sonnet-20240620-v1:0:Claude 3.5 Sonnet:High-intelligence AWS Bedrock Claude model,"
+            "anthropic.claude-3-haiku-20240307-v1:0:Claude 3 Haiku:Fast and lightweight AWS Bedrock model",
+        )
     )
     bedrock_embedding_model_id: str = Field(
         default_factory=lambda: os.getenv("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
     )
+
+    def get_configured_bedrock_models(self) -> List[Dict[str, Any]]:
+        """Parse configured Bedrock models from JSON or comma-separated id:name:description string."""
+        import json
+        raw = (self.bedrock_models or "").strip()
+        if not raw:
+            return []
+
+        # Try JSON parsing
+        if raw.startswith("[") and raw.endswith("]"):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return [
+                        {
+                            "id": item.get("id"),
+                            "name": item.get("name") or item.get("id"),
+                            "provider": "bedrock",
+                            "description": item.get("description") or "AWS Bedrock model",
+                        }
+                        for item in parsed
+                        if isinstance(item, dict) and item.get("id")
+                    ]
+            except Exception:
+                pass
+
+        # Parse comma-separated "id:name:desc"
+        models: List[Dict[str, Any]] = []
+        for entry in raw.split(","):
+            parts = entry.strip().split(":")
+            if not parts or not parts[0]:
+                continue
+            m_id = parts[0].strip()
+            # If colon is part of version like anthropic.claude-3-5-sonnet:0, check segments
+            if len(parts) == 1:
+                models.append({
+                    "id": m_id,
+                    "name": m_id,
+                    "provider": "bedrock",
+                    "description": "AWS Bedrock model",
+                })
+            elif len(parts) == 2:
+                models.append({
+                    "id": m_id,
+                    "name": parts[1].strip(),
+                    "provider": "bedrock",
+                    "description": "AWS Bedrock model",
+                })
+            else:
+                # e.g. "qwen.qwen3-235b-a22b-2507:Qwen 3 235B A22B:Advanced model"
+                # or if model_id itself contains colons like "anthropic.claude-v1:0:Claude:Desc"
+                if parts[1].isdigit() and len(parts) >= 4:
+                    full_id = f"{parts[0]}:{parts[1]}"
+                    name = parts[2].strip()
+                    desc = ":".join(parts[3:]).strip()
+                else:
+                    full_id = parts[0].strip()
+                    name = parts[1].strip()
+                    desc = ":".join(parts[2:]).strip()
+                models.append({
+                    "id": full_id,
+                    "name": name,
+                    "provider": "bedrock",
+                    "description": desc,
+                })
+        return models
 
     # OpenAI / Groq / OpenAI-Compatible Settings
     groq_api_key: Optional[str] = Field(default_factory=lambda: os.getenv("GROQ_API_KEY"))

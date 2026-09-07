@@ -669,7 +669,7 @@ function DashboardApp() {
                         >
                           {models.map((m) => (
                             <option key={m.id} value={m.id}>
-                              {m.name} {m.is_default ? '(Default)' : ''}
+                              {m.name} ({m.provider ? m.provider.toUpperCase() : 'LLM'}) {m.is_default ? '(Default)' : ''}
                             </option>
                           ))}
                         </select>
@@ -946,7 +946,7 @@ function DashboardApp() {
                         >
                           {models.map((m) => (
                             <option key={m.id} value={m.id}>
-                              {m.name} {m.is_default ? '(Default)' : ''}
+                              {m.name} ({m.provider ? m.provider.toUpperCase() : 'LLM'}) {m.is_default ? '(Default)' : ''}
                             </option>
                           ))}
                         </select>
