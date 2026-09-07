@@ -588,6 +588,8 @@ export interface AskSaathiResponse {
   evidence: AskEvidenceItem[];
   confidence: string;
   drilldown_context?: string | null;
+  model?: string;
+  is_fallback?: boolean;
 }
 
 

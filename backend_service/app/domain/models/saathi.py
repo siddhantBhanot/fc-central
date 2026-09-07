@@ -284,6 +284,8 @@ class AskSaathiResponse(BaseModel):
     evidence: List[AskEvidenceItem] = Field(default_factory=list)
     confidence: str = "high"
     drilldown_context: Optional[str] = None
+    model: str = "Claude Sonnet 4.6 (AWS Bedrock)"
+    is_fallback: bool = False
 
 
 class ValidateFactRequest(BaseModel):

@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from backend_service.app.application.services.saathi_service import (
     SaathiService,
@@ -113,6 +114,28 @@ async def ask_saathi_question(
     except Exception as e:
         logger.error(f"Failed to process Ask Saathi query: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/customers/{customer_id}/ask/stream")
+async def ask_saathi_stream_endpoint(
+    customer_id: str,
+    payload: AskSaathiRequest,
+    saathi_service: SaathiService = Depends(get_saathi_service),
+) -> StreamingResponse:
+    """
+    Streamed Ask Saathi natural-language Q&A using AWS Bedrock Sonnet 4.6 default with transparent fallback.
+    Emits SSE events: metadata with model name, progressive token chunks, and done completion.
+    """
+    generator = saathi_service.ask_saathi_stream(customer_id=customer_id, question=payload.question)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/customers/{customer_id}/pre-call-brief", response_model=PreCallBriefing)

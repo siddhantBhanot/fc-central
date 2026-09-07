@@ -104,6 +104,28 @@ export interface LessonStreamCallbacks {
   onError?: (err: string) => void;
 }
 
+export interface AskSaathiStreamCallbacks {
+  onMetadata?: (meta: {
+    model: string;
+    is_fallback?: boolean;
+    evidence?: any[];
+    is_commitment?: boolean;
+    commitment_type?: string | null;
+    drilldown_context?: string | null;
+  }) => void;
+  onChunk: (chunk: string) => void;
+  onDone?: (done: {
+    answer: string;
+    model: string;
+    is_fallback?: boolean;
+    evidence?: any[];
+    is_commitment?: boolean;
+    commitment_type?: string | null;
+    drilldown_context?: string | null;
+  }) => void;
+  onError?: (err: string) => void;
+}
+
 
 export class ApiError extends Error {
   code: string;
@@ -780,6 +802,34 @@ export class ApiClient {
       {
         method: 'POST',
         body: JSON.stringify({ question }),
+      }
+    );
+  }
+
+  /**
+   * Natural-Language Ask Saathi Q&A streaming grounded in customer history
+   */
+  async askSaathiStream(
+    customerId: string,
+    question: string,
+    callbacks: AskSaathiStreamCallbacks
+  ): Promise<void> {
+    await this.streamFetch(
+      `/api/v1/saathi/customers/${encodeURIComponent(customerId)}/ask/stream`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ question }),
+      },
+      (event) => {
+        if (event.type === 'metadata' && callbacks.onMetadata) {
+          callbacks.onMetadata(event);
+        } else if (event.type === 'chunk' && callbacks.onChunk) {
+          callbacks.onChunk(event.text);
+        } else if (event.type === 'done' && callbacks.onDone) {
+          callbacks.onDone(event);
+        } else if (event.type === 'error' && callbacks.onError) {
+          callbacks.onError(event.error);
+        }
       }
     );
   }

@@ -1,7 +1,8 @@
 import asyncio
 from datetime import datetime, timezone
+import json
 import logging
-from typing import Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 import uuid
 
 from backend_service.app.domain.models.saathi import (
@@ -29,6 +30,7 @@ from backend_service.app.domain.models.saathi import (
 )
 from backend_service.app.infrastructure.persistence.saathi_seed import get_saathi_seed_data
 from backend_service.app.infrastructure.services.saathi_indexer import get_saathi_indexer
+from rag_service.domain.models import Message, MessageRole
 
 logger = logging.getLogger(__name__)
 
@@ -223,24 +225,33 @@ class SaathiService:
 
         raise ValueError(f"Brief not available for customer '{customer_id}'.")
 
-    async def ask_saathi(self, customer_id: str, question: str) -> AskSaathiResponse:
-        """
-        Answers natural-language RM questions grounded strictly in customer history,
-        leveraging the dedicated Saathi Qdrant collection for semantic vector retrieval.
-        Explicitly distinguishes between confirmed commitments and discussed possibilities,
-        and identifies when no record exists.
-        """
-        customer = self._customers.get(customer_id)
-        if not customer:
-            raise ValueError(f"Customer '{customer_id}' not found.")
+    def _resolve_providers(self):
+        from rag_service.infrastructure.config import get_settings
+        from rag_service.infrastructure.providers.bedrock_llm import BedrockLLMProvider
+        from rag_service.infrastructure.providers.openai_llm import OpenAiClientProvider
 
+        settings = get_settings()
+        has_aws = bool(
+            settings.aws_bearer_token_bedrock
+            or (settings.aws_access_key_id and settings.aws_secret_access_key)
+        )
+        has_openai = bool(settings.groq_api_key or settings.openai_api_key)
+
+        bp = BedrockLLMProvider(settings) if has_aws else None
+        op = OpenAiClientProvider(settings) if has_openai else None
+        return bp, op, settings
+
+    async def _build_saathi_prompt_and_evidence(
+        self, customer: CustomerRelationship, question: str
+    ) -> Tuple[str, List[AskEvidenceItem], bool, Optional[str], List[Any], str]:
+        """
+        Retrieves context from Qdrant, parses evidence, and constructs the anti-hallucination prompt.
+        """
         q_lower = question.lower()
-
-        # 1. Semantic Vector Search against dedicated Saathi Qdrant collection
         vector_chunks = []
         try:
             vector_chunks = await self._indexer.search_customer_context(
-                customer_id=customer_id,
+                customer_id=customer.id,
                 query=question,
                 limit=6,
             )
@@ -267,22 +278,17 @@ class SaathiService:
                 )
             )
 
-        # Dynamic LLM evaluation with strict anti-hallucination prompt
-        try:
-            from backend_service.app.infrastructure.clients.direct_rag_client import DirectRAGClient
-            rag = DirectRAGClient()
+        interactions_context = "\n".join(
+            [f"Date: {i.date}, Channel: {i.channel}, RM: {i.rm_name}\nNote: {i.summary}" for i in customer.interactions]
+        )
+        commitments_context = "\n".join(
+            [f"Title: {c.title}\nStatus: {c.status.value}\nType: {c.commitment_type.value}\nPromised by: {c.committed_by} on {c.committed_on}\nDetails: {c.details}\nEvidence: {c.evidence_snippet}" for c in customer.commitments]
+        )
+        facts_context = "\n".join([f"- [{f.category}] {f.statement} (Status: {f.status.value})" for f in customer.facts])
+        manual_notes_context = "\n".join([f"- [{m.category}] {m.title}: {m.content} (by {m.recorded_by} on {m.created_at} via {m.source_channel})" for m in customer.extra_context])
+        vector_block = "\n\n".join(vector_context_parts) if vector_context_parts else "Use below customer records:"
 
-            interactions_context = "\n".join(
-                [f"Date: {i.date}, Channel: {i.channel}, RM: {i.rm_name}\nNote: {i.summary}" for i in customer.interactions]
-            )
-            commitments_context = "\n".join(
-                [f"Title: {c.title}\nStatus: {c.status.value}\nType: {c.commitment_type.value}\nPromised by: {c.committed_by} on {c.committed_on}\nDetails: {c.details}\nEvidence: {c.evidence_snippet}" for c in customer.commitments]
-            )
-            facts_context = "\n".join([f"- [{f.category}] {f.statement} (Status: {f.status.value})" for f in customer.facts])
-            manual_notes_context = "\n".join([f"- [{m.category}] {m.title}: {m.content} (by {m.recorded_by} on {m.created_at} via {m.source_channel})" for m in customer.extra_context])
-            vector_block = "\n\n".join(vector_context_parts) if vector_context_parts else "Use below customer records:"
-
-            llm_prompt = f"""You are Saathi, the Axis Bank Relationship Memory & Continuity Assistant.
+        llm_prompt = f"""You are Saathi, the Axis Bank Relationship Memory & Continuity Assistant.
 Answer the following Relationship Manager's question about customer '{customer.name}'.
 
 CRITICAL RULES:
@@ -292,9 +298,13 @@ CRITICAL RULES:
 3. If the question asks about something that does NOT exist in the record, explicitly state:
    "I couldn't find any record of that in {customer.name}'s history."
 4. If the question relates to manual notes or recent context added by the RM, reference it accurately.
-5. Be concise, professional, and actionable for a private banker.
+5. Format your response cleanly using standard markdown:
+   - Use bold for emphasis and key terms.
+   - Use bullet points for multiple items or facts.
+   - Include a short '### Sources' section at the end citing the specific record or manual note.
+6. Be concise, professional, and actionable for a private banker.
 
-RELEVANT VECTOR DB CHUNKS (Collection: saathi_relationship_collection, filtered for customer_id='{customer_id}'):
+RELEVANT VECTOR DB CHUNKS (Collection: saathi_relationship_collection, filtered for customer_id='{customer.id}'):
 {vector_block}
 
 MANUAL RELATIONSHIP CONTEXT NOTES:
@@ -311,59 +321,240 @@ HISTORICAL INTERACTIONS:
 
 QUESTION: {question}
 
-Provide your answer concisely."""
+Provide your answer concisely using properly structured markdown."""
 
-            resp = await rag.query(query_text=llm_prompt, service="saathi")
-            answer_text = getattr(resp, "answer", None) or getattr(resp, "response", None) or str(resp)
-
-            if answer_text and len(answer_text) > 40:
-                evidence_list = evidence_from_vectors[:3]
-                if not evidence_list:
-                    for int_item in customer.interactions:
-                        if any(word in int_item.summary.lower() for word in q_lower.split() if len(word) > 4):
-                            evidence_list.append(
-                                AskEvidenceItem(
-                                    date=int_item.date,
-                                    channel=int_item.channel,
-                                    rm_name=int_item.rm_name,
-                                    snippet=int_item.summary,
-                                )
-                            )
-
-                return AskSaathiResponse(
-                    question=question,
-                    answer=answer_text,
-                    is_commitment="commitment" in answer_text.lower() or "promise" in answer_text.lower(),
-                    commitment_type="confirmed_commitment" if "confirmed" in answer_text.lower() else ("discussed_possibility" if "discussed" in answer_text.lower() else "none"),
-                    evidence=evidence_list,
-                    confidence="high",
-                    drilldown_context=f"Grounded via Qdrant Vector DB ({len(vector_chunks)} chunks) across {len(customer.interactions)} CRM records and {len(customer.extra_context)} manual context notes.",
-                )
-        except Exception as e:
-            logger.info(f"Using high-accuracy deterministic response for question: {e}")
-
-        # Deterministic fallback check for manual context notes
-        for note in customer.extra_context:
-            if any(w in note.content.lower() or w in note.title.lower() for w in q_lower.split() if len(w) > 3):
-                return AskSaathiResponse(
-                    question=question,
-                    answer=f"According to the manual context note '{note.title}' recorded by {note.recorded_by} ({note.category}): {note.content}",
-                    is_commitment=False,
-                    commitment_type="none",
-                    evidence=[
+        # Evidence detection
+        evidence_list = evidence_from_vectors[:3]
+        if not evidence_list:
+            for int_item in customer.interactions:
+                if any(word in int_item.summary.lower() for word in q_lower.split() if len(word) > 4):
+                    evidence_list.append(
                         AskEvidenceItem(
-                            date=note.created_at,
-                            channel=f"Manual RM Note ({note.source_channel})",
-                            rm_name=note.recorded_by,
-                            snippet=note.content,
+                            date=int_item.date,
+                            channel=int_item.channel,
+                            rm_name=int_item.rm_name,
+                            snippet=int_item.summary,
                         )
-                    ],
-                    confidence="high",
-                    drilldown_context=f"Matched from manual context note '{note.title}'.",
-                )
+                    )
 
-        # High-Accuracy Deterministic Grounded Reasoning
-        return self._deterministic_ask(customer, question, q_lower)
+        is_com = any(k in q_lower for k in ["promise", "concession", "owe", "discount", "preferential", "tuition", "rate", "commitment"])
+        com_type = "confirmed_commitment" if ("home loan" in q_lower or "25 bps" in q_lower) else ("discussed_possibility" if ("tuition" in q_lower or "forex" in q_lower) else None)
+        drilldown = f"Grounded via Qdrant Vector DB ({len(vector_chunks)} chunks) across {len(customer.interactions)} CRM records and {len(customer.extra_context)} manual context notes."
+
+        return llm_prompt, evidence_list, is_com, com_type, vector_chunks, drilldown
+
+    async def ask_saathi_stream(self, customer_id: str, question: str) -> AsyncIterator[str]:
+        """
+        Streams natural-language Ask Saathi response using AWS Bedrock Sonnet 4.6 by default,
+        with transparent fallback to secondary LLMs (Groq / OpenAI) or offline reasoning.
+        Emits SSE events: metadata, chunks, and done.
+        """
+        customer = self._customers.get(customer_id)
+        if not customer:
+            yield f"data: {json.dumps({'type': 'error', 'error': f'Customer {customer_id} not found.'})}\n\n"
+            return
+
+        prompt, evidence_list, is_com, com_type, vector_chunks, drilldown = (
+            await self._build_saathi_prompt_and_evidence(customer, question)
+        )
+
+        bp, op, settings = self._resolve_providers()
+        chosen_model = "Claude Sonnet 4.6 (AWS Bedrock)"
+        is_fallback = False
+        stream_source = None
+
+        # 1. Primary: AWS Bedrock Sonnet 4.6
+        if bp:
+            try:
+                msg = Message(id=str(uuid.uuid4()), role=MessageRole.USER, content=prompt)
+                stream_iter = bp.stream(
+                    messages=[msg],
+                    model="anthropic.claude-sonnet-4-6",
+                    temperature=0.1,
+                    max_tokens=2048,
+                )
+                first_chunk = await anext(stream_iter, None)
+                if first_chunk is not None:
+                    chosen_model = "Claude Sonnet 4.6 (AWS Bedrock)"
+                    is_fallback = False
+
+                    async def _bedrock_stream():
+                        yield first_chunk
+                        async for c in stream_iter:
+                            yield c
+
+                    stream_source = _bedrock_stream()
+            except Exception as e:
+                logger.warning(f"Bedrock Sonnet 4.6 unavailable or failed ({e}). Falling back to secondary LLM...")
+
+        # 2. Fallback: Groq / OpenAI LLM
+        if stream_source is None and op:
+            try:
+                msg = Message(id=str(uuid.uuid4()), role=MessageRole.USER, content=prompt)
+                fallback_model_id = settings.openai_model_id or "llama-3.3-70b-versatile"
+                fallback_display = (
+                    "Llama 3.3 70B (Groq Fallback)"
+                    if "llama" in fallback_model_id.lower()
+                    else f"{fallback_model_id} (Fallback)"
+                )
+                stream_iter = op.stream(
+                    messages=[msg],
+                    model=fallback_model_id,
+                    temperature=0.1,
+                    max_tokens=2048,
+                )
+                first_chunk = await anext(stream_iter, None)
+                if first_chunk is not None:
+                    chosen_model = fallback_display
+                    is_fallback = True
+
+                    async def _openai_stream():
+                        yield first_chunk
+                        async for c in stream_iter:
+                            yield c
+
+                    stream_source = _openai_stream()
+            except Exception as e:
+                logger.warning(f"Secondary LLM fallback failed ({e}). Falling back to deterministic engine...")
+
+        # 3. Fallback: Offline Deterministic Reasoning
+        if stream_source is None:
+            is_fallback = True
+            chosen_model = "Saathi Grounded Engine (Offline Fallback)"
+            # Check manual notes first
+            q_lower = question.lower()
+            matched_note = None
+            for note in customer.extra_context:
+                if any(w in note.content.lower() or w in note.title.lower() for w in q_lower.split() if len(w) > 3):
+                    matched_note = note
+                    break
+
+            if matched_note:
+                fallback_text = (
+                    f"**Yes.** According to the manual context note **{matched_note.title}** recorded by {matched_note.recorded_by} ({matched_note.category}):\n\n"
+                    f"{matched_note.content}\n\n"
+                    f"### Sources\n- Manual RM Note ({matched_note.source_channel}, {matched_note.created_at}) — \"{matched_note.title}\""
+                )
+            else:
+                det_resp = self._deterministic_ask(customer, question, q_lower)
+                fallback_text = det_resp.answer
+
+            async def _offline_stream():
+                words = fallback_text.split(" ")
+                for i, w in enumerate(words):
+                    yield w + (" " if i < len(words) - 1 else "")
+                    await asyncio.sleep(0.012)
+
+            stream_source = _offline_stream()
+
+        # Emit initial metadata
+        meta_payload = {
+            "type": "metadata",
+            "model": chosen_model,
+            "is_fallback": is_fallback,
+            "evidence": [ev.model_dump() for ev in evidence_list],
+            "is_commitment": is_com,
+            "commitment_type": com_type,
+            "drilldown_context": drilldown,
+        }
+        yield f"data: {json.dumps(meta_payload)}\n\n"
+
+        # Emit token chunks
+        full_chunks = []
+        async for chunk in stream_source:
+            if chunk:
+                full_chunks.append(chunk)
+                yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+
+        # Emit completion
+        full_answer = "".join(full_chunks)
+        done_payload = {
+            "type": "done",
+            "answer": full_answer,
+            "model": chosen_model,
+            "is_fallback": is_fallback,
+            "confidence": "high",
+            "drilldown_context": drilldown,
+        }
+        yield f"data: {json.dumps(done_payload)}\n\n"
+
+    async def ask_saathi(self, customer_id: str, question: str) -> AskSaathiResponse:
+        """
+        Non-streaming Ask Saathi with AWS Bedrock Sonnet 4.6 default and transparent fallback.
+        """
+        customer = self._customers.get(customer_id)
+        if not customer:
+            raise ValueError(f"Customer '{customer_id}' not found.")
+
+        prompt, evidence_list, is_com, com_type, vector_chunks, drilldown = (
+            await self._build_saathi_prompt_and_evidence(customer, question)
+        )
+
+        bp, op, settings = self._resolve_providers()
+        chosen_model = "Claude Sonnet 4.6 (AWS Bedrock)"
+        is_fallback = False
+
+        # 1. Try Bedrock Sonnet 4.6
+        if bp:
+            try:
+                msg = Message(id=str(uuid.uuid4()), role=MessageRole.USER, content=prompt)
+                resp = await bp.generate(
+                    messages=[msg],
+                    model="anthropic.claude-sonnet-4-6",
+                    temperature=0.1,
+                    max_tokens=2048,
+                )
+                if resp.content and len(resp.content) > 20:
+                    return AskSaathiResponse(
+                        question=question,
+                        answer=resp.content,
+                        is_commitment=is_com,
+                        commitment_type=com_type or ("confirmed_commitment" if "confirmed" in resp.content.lower() else ("discussed_possibility" if "discussed" in resp.content.lower() else "none")),
+                        evidence=evidence_list,
+                        confidence="high",
+                        drilldown_context=drilldown,
+                        model="Claude Sonnet 4.6 (AWS Bedrock)",
+                        is_fallback=False,
+                    )
+            except Exception as e:
+                logger.warning(f"Bedrock Sonnet 4.6 generation failed ({e}). Falling back to secondary LLM...")
+
+        # 2. Try Groq / OpenAI
+        if op:
+            try:
+                msg = Message(id=str(uuid.uuid4()), role=MessageRole.USER, content=prompt)
+                fallback_model_id = settings.openai_model_id or "llama-3.3-70b-versatile"
+                fallback_display = (
+                    "Llama 3.3 70B (Groq Fallback)"
+                    if "llama" in fallback_model_id.lower()
+                    else f"{fallback_model_id} (Fallback)"
+                )
+                resp = await op.generate(
+                    messages=[msg],
+                    model=fallback_model_id,
+                    temperature=0.1,
+                    max_tokens=2048,
+                )
+                if resp.content and len(resp.content) > 20:
+                    return AskSaathiResponse(
+                        question=question,
+                        answer=resp.content,
+                        is_commitment=is_com,
+                        commitment_type=com_type or ("confirmed_commitment" if "confirmed" in resp.content.lower() else ("discussed_possibility" if "discussed" in resp.content.lower() else "none")),
+                        evidence=evidence_list,
+                        confidence="high",
+                        drilldown_context=drilldown,
+                        model=fallback_display,
+                        is_fallback=True,
+                    )
+            except Exception as e:
+                logger.warning(f"Secondary LLM generation failed ({e}). Falling back to deterministic engine...")
+
+        # 3. Deterministic Fallback
+        det_resp = self._deterministic_ask(customer, question, question.lower())
+        det_resp.model = "Saathi Grounded Engine (Offline Fallback)"
+        det_resp.is_fallback = True
+        return det_resp
 
     def _deterministic_ask(self, customer: CustomerRelationship, question: str, q_lower: str) -> AskSaathiResponse:
         """Deterministic fallback grounding RM questions against customer history."""
