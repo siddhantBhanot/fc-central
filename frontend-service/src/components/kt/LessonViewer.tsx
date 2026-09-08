@@ -8,6 +8,7 @@ import {
   Lightbulb,
   Loader2,
   MessageSquare,
+  RotateCcw,
   Sparkles,
   XCircle,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ interface LessonViewerProps {
   }>;
   isLastLesson: boolean;
   isSidebarCollapsed?: boolean;
+  onRestartCourse?: () => void;
 }
 
 export function LessonViewer({
@@ -38,6 +40,7 @@ export function LessonViewer({
   onSubmitCheck,
   isLastLesson,
   isSidebarCollapsed = false,
+  onRestartCourse,
 }: LessonViewerProps) {
   // Knowledge Check State
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -113,6 +116,21 @@ export function LessonViewer({
                 <Cpu className="w-3 h-3 text-slate-400" />
                 {lesson.model}
               </span>
+            )}
+            {onRestartCourse && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Restart this entire course from Lesson 1? Progress will be reset.')) {
+                    onRestartCourse();
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium text-slate-500 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer"
+                title="Restart course from Lesson 1"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Restart Course</span>
+              </button>
             )}
           </div>
         </div>

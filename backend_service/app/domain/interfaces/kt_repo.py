@@ -37,3 +37,19 @@ class IKTRepository(Protocol):
     ) -> List[LessonDoubt]:
         """List questions/doubts for a lesson, optionally filtered by user."""
         ...
+
+    async def reset_enrollments(
+        self, user_id: Optional[str] = None, course_id: Optional[str] = None
+    ) -> int:
+        """Reset/delete enrollments for a user, a course, or all users if unconstrained."""
+        ...
+
+    async def reset_doubts(
+        self, user_id: Optional[str] = None, course_id: Optional[str] = None
+    ) -> int:
+        """Reset/delete lesson doubts for a user, a course, or all users if unconstrained."""
+        ...
+
+    async def clear_cached_lessons(self, course_id: Optional[str] = None) -> int:
+        """Clear cached lesson materials for a specific course or all courses."""
+        ...

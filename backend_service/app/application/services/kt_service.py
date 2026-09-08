@@ -99,7 +99,34 @@ class KTService:
             "course": course,
             "current_lesson": current_lesson,
         }
+    async def restart_course(self, course_id: str, user_id: str) -> Dict[str, Any]:
+        """
+        Restart a course for a user back to Lesson 1 with 0% progress and cleared checks.
+        """
+        course = await self.rag_client.get_course_detail(course_id)
+        if not course:
+            raise EntityNotFoundException(entity_name="Course", entity_id=course_id)
 
+        enrollment = CourseEnrollment(
+            user_id=user_id,
+            course_id=course_id,
+            current_lesson_index=0,
+            completed_lessons=[],
+            overall_progress=0,
+            is_completed=False,
+            knowledge_check_results={},
+        )
+        saved = await self.kt_repo.save_enrollment(enrollment)
+        await self.kt_repo.reset_doubts(user_id=user_id, course_id=course_id)
+
+        lessons = course.get("lessons", [])
+        return {
+            "status": "success",
+            "message": f"Course '{course.get('title')}' restarted successfully.",
+            "enrollment": saved.to_dict(),
+            "course": course,
+            "current_lesson": lessons[0] if lessons else None,
+        }
     async def get_lesson_content(
         self,
         course_id: str,
@@ -526,3 +553,49 @@ class KTService:
 
     async def get_course_document(self, course_id: str, file_path: str) -> DocumentView:
         return await self.rag_client.get_course_document(course_id=course_id, file_path=file_path)
+
+    async def reset_progress(
+        self,
+        user_id: Optional[str] = None,
+        course_id: Optional[str] = None,
+        clear_doubts: bool = True,
+        clear_cache: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Reset course enrollments and progress for a specific user, specific course, or all users.
+        """
+        enrollments_reset = await self.kt_repo.reset_enrollments(user_id=user_id, course_id=course_id)
+        doubts_reset = 0
+        if clear_doubts:
+            doubts_reset = await self.kt_repo.reset_doubts(user_id=user_id, course_id=course_id)
+        cache_cleared = 0
+        if clear_cache:
+            cache_cleared = await self.kt_repo.clear_cached_lessons(course_id=course_id)
+
+        logger.info(
+            f"Reset Knowledge Cafe progress: user_id={user_id}, course_id={course_id}, "
+            f"enrollments_cleared={enrollments_reset}, doubts_cleared={doubts_reset}, cache_cleared={cache_cleared}"
+        )
+        return {
+            "status": "success",
+            "message": "Knowledge Cafe progress reset successfully",
+            "enrollments_cleared": enrollments_reset,
+            "doubts_cleared": doubts_reset,
+            "cache_cleared": cache_cleared,
+            "user_id": user_id,
+            "course_id": course_id,
+        }
+
+    async def clear_cached_lessons(self, course_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Purge cached lesson content so materials are re-synthesized afresh.
+        """
+        cleared = await self.kt_repo.clear_cached_lessons(course_id=course_id)
+        logger.info(f"Purged cached lessons: course_id={course_id}, count={cleared}")
+        return {
+            "status": "success",
+            "message": f"Purged {cleared} cached lesson(s). Lessons will now be generated afresh.",
+            "lessons_purged": cleared,
+            "course_id": course_id,
+        }
+

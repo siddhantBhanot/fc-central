@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
@@ -67,6 +67,18 @@ async def enroll_or_resume(
     """
     res = await kt_service.enroll_or_resume(course_id=course_id, user_id=current_user.id)
     return EnrollResponse(**res)
+
+
+@router.post("/courses/{course_id}/restart")
+async def restart_course(
+    course_id: str,
+    current_user: User = Depends(get_current_user),
+    kt_service: KTService = Depends(get_kt_service),
+) -> Dict[str, Any]:
+    """
+    Restart a course for the authenticated user, resetting progress back to Lesson 1.
+    """
+    return await kt_service.restart_course(course_id=course_id, user_id=current_user.id)
 
 
 @router.get("/courses/{course_id}/lessons/{lesson_id}", response_model=LessonDetailResponse)
@@ -224,3 +236,37 @@ async def get_course_document(
         total_lines=doc.total_lines,
         size_bytes=doc.size_bytes,
     )
+
+
+@router.post("/progress/reset")
+async def reset_kt_progress(
+    course_id: Optional[str] = Query(None, description="Optional course ID to reset, or all courses if omitted"),
+    all_users: bool = Query(False, description="If true, reset progress across all users in the system"),
+    clear_doubts: bool = Query(True, description="Whether to also reset in-lesson doubt questions"),
+    clear_cache: bool = Query(False, description="Whether to also purge cached lesson materials"),
+    current_user: User = Depends(get_current_user),
+    kt_service: KTService = Depends(get_kt_service),
+) -> Dict[str, Any]:
+    """
+    Reset Knowledge Cafe progress for the current user, or for all users when all_users=True.
+    """
+    target_user_id = None if all_users else current_user.id
+    return await kt_service.reset_progress(
+        user_id=target_user_id,
+        course_id=course_id,
+        clear_doubts=clear_doubts,
+        clear_cache=clear_cache,
+    )
+
+
+@router.post("/cache/clear")
+async def clear_lesson_cache(
+    course_id: Optional[str] = Query(None, description="Optional course ID to purge cache for, or all if omitted"),
+    current_user: User = Depends(get_current_user),
+    kt_service: KTService = Depends(get_kt_service),
+) -> Dict[str, Any]:
+    """
+    Purge synthesized lesson caches so that learning materials are generated afresh.
+    """
+    return await kt_service.clear_cached_lessons(course_id=course_id)
+

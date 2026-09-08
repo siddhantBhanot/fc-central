@@ -14,6 +14,7 @@ function initMermaid() {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'loose',
+      suppressErrorRendering: true,
       theme: 'neutral',
       themeVariables: {
         primaryColor: '#fff7ed', // orange-50
@@ -29,6 +30,7 @@ function initMermaid() {
       },
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
     });
+    mermaid.setParseErrorHandler(() => {});
     mermaidInitialized = true;
   } catch (err) {
     console.error('Failed to initialize mermaid:', err);
@@ -56,29 +58,53 @@ export function sanitizeMermaidChart(raw: string): string {
   text = text.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
   text = text.replace(/[\u00A0\u202F\u2007\u2060]/g, ' ');
 
-  // 3. Normalize Unicode dashes & arrows
+  // 3. Diagram-type awareness:
+  // Sequence diagrams, class diagrams, state diagrams, and ER diagrams have different grammars
+  // and MUST NOT have flowchart node-shape regexes applied to them.
+  const isSequence = /^\s*sequenceDiagram\b/m.test(text);
+  const isClass = /^\s*classDiagram\b/m.test(text);
+  const isState = /^\s*stateDiagram(?:-v2)?\b/m.test(text);
+  const isEr = /^\s*erDiagram\b/m.test(text);
+
+  if (isSequence || isClass || isState || isEr) {
+    return text;
+  }
+
+  // 4. Normalize Unicode dashes & arrows
   // Non-breaking hyphen (\u2011), Hyphen (\u2010), Figure dash (\u2012), En-dash (\u2013), Em-dash (\u2014), Horizontal bar (\u2015), Box-drawings light horizontal (\u2500)
   text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]+>/g, '-->');
   text = text.replace(/<[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]+>/g, '<-->');
   text = text.replace(/<[\u2010\u2011\u2012\u2013\u2014\u2500]+/g, '<--');
   text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]{2,}/g, '--');
-  text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2500]/g, '-');
+  text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2500]/g, '-');
   // Standalone unicode right arrows: →, ➔, ➜, ⟶
   text = text.replace(/[\u2192\u2794\u279c\u27f6]/g, '-->');
   // Standalone unicode double arrows: ⇒, ⟹
   text = text.replace(/[\u21d2\u27f9]/g, '==>');
 
-  // 3. Single dash arrow: replace " -> " or "] -> " or ") -> " with " --> "
+  // 5. Single dash arrow: replace " -> " or "] -> " or ") -> " with " --> "
   text = text.replace(/(\s)->(\s)/g, '$1-->$2');
   text = text.replace(/(\])\s*->(\s)/g, '$1 -->$2');
   text = text.replace(/(\))\s*->(\s)/g, '$1 -->$2');
   text = text.replace(/(\})\s*->(\s)/g, '$1 -->$2');
 
-  // 4. Direction validation
+  // 6. Direction validation
   // If line starts with bare "flowchart" or "graph" without direction, append TD
   text = text.replace(/^(flowchart|graph)\s*$/m, '$1 TD');
 
-  // 5. Line-by-line label quoting and subgraph normalization
+  // 7. Protect existing double-quoted strings with tokens
+  // This is CRITICAL: Mermaid nodes like `B["Identity Collection\n(OVDs + PAN / Form 60)"]`
+  // must not have their inner parentheses matched by round-bracket node regexes!
+  const stringTokens: string[] = [];
+  text = text.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (_match, inner) => {
+    const idx = stringTokens.length;
+    // Normalize newlines inside strings to literal \n so line splitting doesn't break strings
+    const normalized = inner.replace(/\r?\n/g, '\\n');
+    stringTokens.push(normalized);
+    return `"___MERMAID_STR_${idx}___"`;
+  });
+
+  // 8. Line-by-line label quoting and subgraph normalization
   const lines = text.split('\n');
   let openSubgraphs = 0;
 
@@ -94,7 +120,12 @@ export function sanitizeMermaidChart(raw: string): string {
       openSubgraphs++;
       l = l.replace(/^(\s*subgraph\s+)(.+)$/i, (match, prefix, rest) => {
         const title = rest.trim();
-        if ((title.startsWith('"') && title.endsWith('"')) || (title.startsWith('[') && title.endsWith(']'))) {
+        if (
+          title.includes('___MERMAID_STR_') ||
+          /^[a-zA-Z0-9_-]+\s*\[.+\]$/.test(title) ||
+          (title.startsWith('"') && title.endsWith('"')) ||
+          (title.startsWith('[') && title.endsWith(']'))
+        ) {
           return match;
         }
         if (/[^a-zA-Z0-9_-]/.test(title)) {
@@ -110,10 +141,14 @@ export function sanitizeMermaidChart(raw: string): string {
       return l;
     }
 
-    // Edge labels: |label| -> |"label"| (prevents tokenizer syntax errors when edge labels contain parens or special chars)
+    // Edge labels: |label| -> |"label"|
     l = l.replace(/\|([^|\n]+)\|/g, (match, content) => {
       const cTrim = content.trim();
-      if ((cTrim.startsWith('"') && cTrim.endsWith('"')) || (cTrim.startsWith("'") && cTrim.endsWith("'"))) {
+      if (
+        cTrim.includes('___MERMAID_STR_') ||
+        (cTrim.startsWith('"') && cTrim.endsWith('"')) ||
+        (cTrim.startsWith("'") && cTrim.endsWith("'"))
+      ) {
         return match;
       }
       const safe = cTrim.replace(/"/g, "'");
@@ -122,7 +157,11 @@ export function sanitizeMermaidChart(raw: string): string {
 
     const quoteContent = (content: string) => {
       const cTrim = content.trim();
-      if ((cTrim.startsWith('"') && cTrim.endsWith('"')) || (cTrim.startsWith("'") && cTrim.endsWith("'"))) {
+      if (
+        cTrim.includes('___MERMAID_STR_') ||
+        (cTrim.startsWith('"') && cTrim.endsWith('"')) ||
+        (cTrim.startsWith("'") && cTrim.endsWith("'"))
+      ) {
         return cTrim;
       }
       const safe = cTrim.replace(/"/g, "'");
@@ -175,7 +214,14 @@ export function sanitizeMermaidChart(raw: string): string {
     openSubgraphs--;
   }
 
-  return sanitizedLines.join('\n');
+  let result = sanitizedLines.join('\n');
+
+  // Restore protected strings
+  result = result.replace(/"___MERMAID_STR_(\d+)___"/g, (_match, idx) => {
+    return `"${stringTokens[Number(idx)]}"`;
+  });
+
+  return result;
 }
 
 export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ chart }) => {
@@ -237,10 +283,9 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ chart }) => {
           setIsRendering(false);
         }
         // Remove any temporary error element created by Mermaid in body
-        const errEl = document.querySelector(`[id^="d${elementId}"]`);
-        if (errEl) {
-          errEl.remove();
-        }
+        document.querySelectorAll(`svg[id^="d${elementId}"], svg[id^="dmermaid-"]`).forEach((el) => {
+          el.remove();
+        });
       }
     };
 

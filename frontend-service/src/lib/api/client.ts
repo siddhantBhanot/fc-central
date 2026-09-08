@@ -567,6 +567,15 @@ export class ApiClient {
   }
 
   /**
+   * Restart a course from Lesson 1, resetting completed lessons and progress
+   */
+  async restartCourse(courseId: string): Promise<EnrollResult> {
+    return this.fetch<EnrollResult>(`/api/v1/kt/courses/${encodeURIComponent(courseId)}/restart`, {
+      method: 'POST',
+    });
+  }
+
+  /**
    * Retrieve or synthesize a lesson using its dedicated context files (non-streaming fallback)
    */
   async getLesson(courseId: string, lessonId: string, model?: string): Promise<LessonDetail> {
@@ -689,6 +698,33 @@ export class ApiClient {
     return this.fetch<DocumentDetailResponse>(
       `/api/v1/kt/courses/${encodeURIComponent(courseId)}/documents?${params.toString()}`
     );
+  }
+
+  /**
+   * Reset Knowledge Cafe progress for current user or all users
+   */
+  async resetKTProgress(options?: { courseId?: string; allUsers?: boolean; clearDoubts?: boolean; clearCache?: boolean }): Promise<any> {
+    const params = new URLSearchParams();
+    if (options?.courseId) params.append('course_id', options.courseId);
+    if (options?.allUsers) params.append('all_users', 'true');
+    if (options?.clearDoubts !== undefined) params.append('clear_doubts', String(options.clearDoubts));
+    if (options?.clearCache !== undefined) params.append('clear_cache', String(options.clearCache));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return this.fetch<any>(`/api/v1/kt/progress/reset${qs}`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Purge synthesized lesson cache so materials are regenerated afresh
+   */
+  async clearKTCache(courseId?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (courseId) params.append('course_id', courseId);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return this.fetch<any>(`/api/v1/kt/cache/clear${qs}`, {
+      method: 'POST',
+    });
   }
 
   // ==========================================================================

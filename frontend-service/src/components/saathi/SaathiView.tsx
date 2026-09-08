@@ -15,6 +15,7 @@ import type {
 import { RMHandoverDashboard } from './RMHandoverDashboard';
 import { CustomerContinuityModal } from './CustomerContinuityModal';
 import { AddContextModal } from './AddContextModal';
+import { getCustomerAvatar } from './saathiAvatar';
 
 export const SaathiView: React.FC = () => {
   const [customerSummaries, setCustomerSummaries] = useState<CustomerSummaryDTO[]>([]);
@@ -218,6 +219,7 @@ export const SaathiView: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {filteredCustomers.map((c) => {
             const isSelected = selectedCustomerId === c.id;
+            const avatar = getCustomerAvatar(c);
 
             return (
               <button
@@ -230,11 +232,13 @@ export const SaathiView: React.FC = () => {
                 }`}
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <div
-                      className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${c.avatar_color} text-white flex items-center justify-center font-black text-xs shadow-2xs`}
+                      className={`w-8 h-8 rounded-xl text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 ring-1 ring-white/30 select-none ${avatar.ring}`}
+                      style={{ background: avatar.gradient }}
+                      title={c.name}
                     >
-                      {c.name.charAt(0)}
+                      {avatar.initials}
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 leading-tight">

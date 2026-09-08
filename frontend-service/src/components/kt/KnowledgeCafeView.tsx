@@ -73,6 +73,28 @@ export function KnowledgeCafeView({
     }
   };
 
+  // Handle Course Restart
+  const handleRestartCourse = async (courseId: string) => {
+    try {
+      setActiveCourseId(courseId);
+      setIsLoadingLesson(true);
+
+      const restartRes = await apiClient.restartCourse(courseId);
+      setActiveCourse(restartRes.course);
+      await loadCourses();
+
+      const targetLessonId =
+        restartRes.current_lesson?.id || restartRes.course.lessons[0]?.id;
+
+      if (targetLessonId) {
+        await handleSelectLesson(targetLessonId, courseId);
+      }
+    } catch (e) {
+      console.error('Error restarting course:', e);
+      setIsLoadingLesson(false);
+    }
+  };
+
   // Handle Lesson Switching with Real-Time Streaming
   const handleSelectLesson = async (lessonId: string, overrideCourseId?: string) => {
     const courseId = overrideCourseId || activeCourseId;
@@ -288,6 +310,7 @@ export function KnowledgeCafeView({
         isLoading={isLoadingCatalog}
         userRole={userRole}
         onSelectCourse={handleSelectCourse}
+        onRestartCourse={handleRestartCourse}
       />
     );
   }
@@ -354,6 +377,7 @@ export function KnowledgeCafeView({
           onSubmitCheck={handleSubmitCheck}
           isLastLesson={isLastLesson}
           isSidebarCollapsed={!isSidebarOpen}
+          onRestartCourse={() => activeCourseId && handleRestartCourse(activeCourseId)}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center text-xs text-slate-400">

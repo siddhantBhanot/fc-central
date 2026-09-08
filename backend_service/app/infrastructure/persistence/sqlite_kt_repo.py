@@ -259,3 +259,63 @@ class SQLiteKTRepository(IKTRepository):
                     )
                 )
             return doubts
+
+    async def reset_enrollments(
+        self, user_id: Optional[str] = None, course_id: Optional[str] = None
+    ) -> int:
+        async with self.db.connection() as conn:
+            if user_id and course_id:
+                cursor = await conn.execute(
+                    "DELETE FROM kt_course_enrollments WHERE user_id = ? AND course_id = ?",
+                    (user_id, course_id),
+                )
+            elif user_id:
+                cursor = await conn.execute(
+                    "DELETE FROM kt_course_enrollments WHERE user_id = ?",
+                    (user_id,),
+                )
+            elif course_id:
+                cursor = await conn.execute(
+                    "DELETE FROM kt_course_enrollments WHERE course_id = ?",
+                    (course_id,),
+                )
+            else:
+                cursor = await conn.execute("DELETE FROM kt_course_enrollments")
+            await conn.commit()
+            return cursor.rowcount
+
+    async def reset_doubts(
+        self, user_id: Optional[str] = None, course_id: Optional[str] = None
+    ) -> int:
+        async with self.db.connection() as conn:
+            if user_id and course_id:
+                cursor = await conn.execute(
+                    "DELETE FROM kt_lesson_doubts WHERE user_id = ? AND course_id = ?",
+                    (user_id, course_id),
+                )
+            elif user_id:
+                cursor = await conn.execute(
+                    "DELETE FROM kt_lesson_doubts WHERE user_id = ?",
+                    (user_id,),
+                )
+            elif course_id:
+                cursor = await conn.execute(
+                    "DELETE FROM kt_lesson_doubts WHERE course_id = ?",
+                    (course_id,),
+                )
+            else:
+                cursor = await conn.execute("DELETE FROM kt_lesson_doubts")
+            await conn.commit()
+            return cursor.rowcount
+
+    async def clear_cached_lessons(self, course_id: Optional[str] = None) -> int:
+        async with self.db.connection() as conn:
+            if course_id:
+                cursor = await conn.execute(
+                    "DELETE FROM kt_cached_lessons WHERE course_id = ?",
+                    (course_id,),
+                )
+            else:
+                cursor = await conn.execute("DELETE FROM kt_cached_lessons")
+            await conn.commit()
+            return cursor.rowcount

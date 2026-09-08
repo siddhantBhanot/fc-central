@@ -16,9 +16,10 @@ interface CourseCatalogProps {
   isLoading: boolean;
   userRole?: 'developer' | 'banking_staff';
   onSelectCourse: (courseId: string) => void;
+  onRestartCourse?: (courseId: string) => void;
 }
 
-export function CourseCatalog({ courses, isLoading, userRole, onSelectCourse }: CourseCatalogProps) {
+export function CourseCatalog({ courses, isLoading, userRole, onSelectCourse, onRestartCourse }: CourseCatalogProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const isBanking = userRole === 'banking_staff';
 
@@ -238,29 +239,47 @@ export function CourseCatalog({ courses, isLoading, userRole, onSelectCourse }: 
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => onSelectCourse(course.id)}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-slate-900 ${
-                      isBanking ? 'hover:bg-[#97144d]' : 'hover:bg-[#f05a28]'
-                    } transition-colors cursor-pointer shadow-xs`}
-                  >
-                    {isCompleted ? (
-                      <>
+                  <div className="flex items-center gap-2">
+                    {(progress > 0 || isCompleted) && onRestartCourse && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Restart "${course.title}" from Lesson 1? Progress will be reset.`)) {
+                            onRestartCourse(course.id);
+                          }
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer"
+                        title="Restart course from beginning"
+                      >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        Review
-                      </>
-                    ) : progress > 0 ? (
-                      <>
-                        <Play className="w-3.5 h-3.5 fill-white" />
-                        Resume
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5 fill-white" />
-                        Start KT
-                      </>
+                        <span>Restart</span>
+                      </button>
                     )}
-                  </button>
+                    <button
+                      onClick={() => onSelectCourse(course.id)}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-slate-900 ${
+                        isBanking ? 'hover:bg-[#97144d]' : 'hover:bg-[#f05a28]'
+                      } transition-colors cursor-pointer shadow-xs`}
+                    >
+                      {isCompleted ? (
+                        <>
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Review
+                        </>
+                      ) : progress > 0 ? (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-white" />
+                          Resume
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-white" />
+                          Start KT
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             );
