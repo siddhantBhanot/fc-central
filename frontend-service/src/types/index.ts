@@ -285,6 +285,7 @@ export interface LessonSummary {
   context_files: string[];
   status?: 'upcoming' | 'current' | 'completed';
   knowledge_check?: KnowledgeCheck;
+  knowledge_checks?: KnowledgeCheck[];
 }
 
 export interface CourseEnrollment {
@@ -339,6 +340,7 @@ export interface LessonDetail {
   takeaways: string[];
   sources: SourceCitation[];
   knowledge_check?: KnowledgeCheck;
+  knowledge_checks?: KnowledgeCheck[];
   doubts: LessonDoubt[];
   is_completed: boolean;
   model: string;
@@ -351,11 +353,23 @@ export interface CompleteLessonResult {
   is_course_completed: boolean;
 }
 
-export interface KnowledgeCheckResult {
-  lesson_id: string;
+export interface KnowledgeCheckQuestionResult {
+  question_index: number;
+  selected_option_index?: number;
   is_correct: boolean;
   correct_option_index: number;
   explanation: string;
+}
+
+export interface KnowledgeCheckResult {
+  lesson_id: string;
+  is_correct: boolean;
+  correct_option_index?: number;
+  explanation?: string;
+  question_index?: number;
+  results?: KnowledgeCheckQuestionResult[];
+  score?: number;
+  total?: number;
 }
 
 export interface EnrollResult {

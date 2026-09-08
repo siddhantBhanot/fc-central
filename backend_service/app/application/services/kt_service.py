@@ -204,6 +204,7 @@ class KTService:
             "takeaways": takeaways,
             "sources": sources,
             "knowledge_check": lesson.get("knowledge_check"),
+            "knowledge_checks": lesson.get("knowledge_checks") or ([lesson.get("knowledge_check")] if lesson.get("knowledge_check") else []),
             "doubts": [d.to_dict() for d in doubts],
             "is_completed": is_completed,
             "model": effective_model,
@@ -252,6 +253,7 @@ class KTService:
                 "takeaways": cached.takeaways,
                 "sources": [s.to_dict() for s in cached.sources],
                 "knowledge_check": lesson.get("knowledge_check"),
+                "knowledge_checks": lesson.get("knowledge_checks") or ([lesson.get("knowledge_check")] if lesson.get("knowledge_check") else []),
                 "doubts": [d.to_dict() for d in doubts],
                 "is_completed": is_completed,
                 "model": effective_model,
@@ -289,6 +291,7 @@ class KTService:
                 "summary": lesson["summary"],
                 "sources": [s.to_dict() for s in sources],
                 "knowledge_check": lesson.get("knowledge_check"),
+                "knowledge_checks": lesson.get("knowledge_checks") or ([lesson.get("knowledge_check")] if lesson.get("knowledge_check") else []),
                 "doubts": [d.to_dict() for d in doubts],
                 "is_completed": is_completed,
                 "model": effective_model,
@@ -512,8 +515,10 @@ class KTService:
         self,
         course_id: str,
         lesson_id: str,
-        selected_option_index: int,
         user_id: str,
+        selected_option_index: Optional[int] = None,
+        question_index: int = 0,
+        answers: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         course = await self.rag_client.get_course_detail(course_id)
         if not course:
@@ -528,27 +533,93 @@ class KTService:
         if not lesson:
             raise EntityNotFoundException(entity_name="Lesson", entity_id=lesson_id)
 
-        kc = lesson.get("knowledge_check")
-        if not kc:
+        kcs = lesson.get("knowledge_checks") or []
+        if not kcs and lesson.get("knowledge_check"):
+            kcs = [lesson.get("knowledge_check")]
+
+        if not kcs:
             raise ValidationException(f"Lesson '{lesson_id}' does not have a knowledge check.")
 
-        correct_idx = kc.get("correct_option_index", 0)
-        is_correct = (selected_option_index == correct_idx)
-
         enrollment = await self.kt_repo.get_enrollment(user_id, course_id)
+
+        # Batch submission across all questions
+        if answers is not None and len(answers) > 0:
+            results = []
+            correct_count = 0
+            for idx, ans in enumerate(answers):
+                if idx < len(kcs):
+                    target_kc = kcs[idx]
+                    correct_idx = target_kc.get("correct_option_index", 0)
+                    is_corr = (ans == correct_idx)
+                    if is_corr:
+                        correct_count += 1
+                    results.append({
+                        "question_index": idx,
+                        "selected_option_index": ans,
+                        "is_correct": is_corr,
+                        "correct_option_index": correct_idx,
+                        "explanation": target_kc.get("explanation", ""),
+                    })
+
+            all_correct = (correct_count == len(results))
+            if enrollment:
+                enrollment.knowledge_check_results[lesson_id] = {
+                    "answers": answers,
+                    "score": correct_count,
+                    "total": len(results),
+                    "is_correct": all_correct,
+                    "submitted_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await self.kt_repo.save_enrollment(enrollment)
+
+            first_res = results[0] if results else {}
+            return {
+                "lesson_id": lesson_id,
+                "is_correct": all_correct,
+                "correct_option_index": first_res.get("correct_option_index", 0),
+                "explanation": first_res.get("explanation", ""),
+                "question_index": 0,
+                "results": results,
+                "score": correct_count,
+                "total": len(results),
+            }
+
+        # Single question submission
+        target_idx = question_index if (0 <= question_index < len(kcs)) else 0
+        target_kc = kcs[target_idx]
+        correct_idx = target_kc.get("correct_option_index", 0)
+        sel_idx = selected_option_index if selected_option_index is not None else 0
+        is_correct = (sel_idx == correct_idx)
+
         if enrollment:
-            enrollment.knowledge_check_results[lesson_id] = {
-                "selected_option_index": selected_option_index,
+            curr_res = enrollment.knowledge_check_results.get(lesson_id, {})
+            if not isinstance(curr_res, dict):
+                curr_res = {}
+            curr_res[f"q_{target_idx}"] = {
+                "selected_option_index": sel_idx,
                 "is_correct": is_correct,
                 "submitted_at": datetime.now(timezone.utc).isoformat(),
             }
+            curr_res["selected_option_index"] = sel_idx
+            curr_res["is_correct"] = is_correct
+            enrollment.knowledge_check_results[lesson_id] = curr_res
             await self.kt_repo.save_enrollment(enrollment)
 
         return {
             "lesson_id": lesson_id,
             "is_correct": is_correct,
             "correct_option_index": correct_idx,
-            "explanation": kc.get("explanation", ""),
+            "explanation": target_kc.get("explanation", ""),
+            "question_index": target_idx,
+            "results": [{
+                "question_index": target_idx,
+                "selected_option_index": sel_idx,
+                "is_correct": is_correct,
+                "correct_option_index": correct_idx,
+                "explanation": target_kc.get("explanation", ""),
+            }],
+            "score": 1 if is_correct else 0,
+            "total": 1,
         }
 
     async def get_course_document(self, course_id: str, file_path: str) -> DocumentView:

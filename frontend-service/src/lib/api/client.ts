@@ -89,6 +89,7 @@ export interface LessonStreamCallbacks {
     takeaways?: string[];
     sources: SourceCitation[];
     knowledge_check?: any;
+    knowledge_checks?: any[];
     doubts: LessonDoubt[];
     is_completed: boolean;
     model: string;
@@ -679,13 +680,19 @@ export class ApiClient {
   async submitKnowledgeCheck(
     courseId: string,
     lessonId: string,
-    selectedOptionIndex: number
+    selectedOptionIndex?: number,
+    questionIndex: number = 0,
+    answers?: number[]
   ): Promise<KnowledgeCheckResult> {
     return this.fetch<KnowledgeCheckResult>(
       `/api/v1/kt/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}/check`,
       {
         method: 'POST',
-        body: JSON.stringify({ selected_option_index: selectedOptionIndex }),
+        body: JSON.stringify({
+          selected_option_index: selectedOptionIndex,
+          question_index: questionIndex,
+          answers: answers,
+        }),
       }
     );
   }

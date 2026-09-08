@@ -182,11 +182,8 @@ class SaathiService:
             fallback_customer=customer,
         )
 
-        # Dynamic LLM synthesis using DirectRAGClient
+        # Dynamic LLM synthesis using resolved providers with automatic fallback
         try:
-            from backend_service.app.infrastructure.clients.direct_rag_client import DirectRAGClient
-            rag = DirectRAGClient()
-
             manual_notes_section = ""
             if customer.extra_context:
                 manual_notes_section = "Latest Manually Recorded Context Notes by RM:\n" + "\n".join(
@@ -194,22 +191,75 @@ class SaathiService:
                 ) + "\n\n"
 
             prompt = (
-                f"You are the Axis Bank Saathi Relationship Continuity AI. Synthesize an empathetic, concise Relationship Brief "
+                f"You are the Axis Bank Saathi Relationship Continuity AI. Synthesize an empathetic, high-level executive brief "
                 f"for incoming RM '{customer.new_rm_name}' taking over client '{customer.name}' ({customer.tier.value}, AUM: {customer.aum_display}).\n"
                 f"Previous RM: {customer.previous_rm_name} (Transfer Reason: {customer.transfer_reason}).\n\n"
                 f"{manual_notes_section}"
                 f"All Grounded Customer Context from Qdrant Vector DB:\n{qdrant_context}\n\n"
-                f"CRITICAL INSTRUCTIONS:\n"
-                f"1. Synthesize an executive summary that weaves together ALL customer dimensions (family, wealth, commitments, and any newly added notes).\n"
-                f"2. Provide a warm first-call conversation opener acknowledging previous RM and referencing existing commitments or latest discussion points.\n"
-                f"Keep the summary professional, executive, and actionable."
+                f"CRITICAL FORMATTING INSTRUCTIONS:\n"
+                f"1. Output a cohesive, polished narrative summary in 2 to 3 paragraphs (around 90 to 160 words).\n"
+                f"2. Seamlessly weave together who the client is, relationship tenure/sentiment, core wealth and family priorities, and immediate upcoming commitments/notes.\n"
+                f"3. Do NOT use markdown tables or raw pipe (|) table syntax.\n"
+                f"4. Do NOT output a document title like '## Executive Summary'. Start directly with the narrative summary.\n"
+                f"5. At the very end on a new line, provide 'FIRST_CALL_OPENER: <opener>', a warm 2-sentence conversational opener for the incoming RM acknowledging the previous RM and the primary upcoming topic."
             )
-            resp = await rag.query(query_text=prompt, service="saathi")
-            llm_text = getattr(resp, "answer", None) or getattr(resp, "response", None) or str(resp)
 
-            if llm_text and len(llm_text) > 80:
-                if customer.brief:
-                    customer.brief.executive_summary = llm_text[:600] + ("..." if len(llm_text) > 600 else "")
+            bp, op, settings = self._resolve_providers()
+            llm_text = None
+            msg = Message(id=str(uuid.uuid4()), role=MessageRole.USER, content=prompt)
+
+            # 1. Primary: AWS Bedrock
+            if bp:
+                try:
+                    model_id = settings.bedrock_llm_model_id or "anthropic.claude-sonnet-4-6"
+                    resp = await bp.generate(messages=[msg], model=model_id, temperature=0.1, max_tokens=1024)
+                    if resp and resp.content and resp.content.strip():
+                        llm_text = resp.content.strip()
+                except Exception as e:
+                    logger.warning(f"Bedrock synthesize_brief attempt failed ({e}). Falling back...")
+
+            # 2. Secondary: Groq / OpenAI Fallback
+            if not llm_text and op:
+                try:
+                    fallback_model_id = settings.openai_model_id or "llama-3.3-70b-versatile"
+                    resp = await op.generate(messages=[msg], model=fallback_model_id, temperature=0.1, max_tokens=1024)
+                    if resp and resp.content and resp.content.strip():
+                        llm_text = resp.content.strip()
+                except Exception as e:
+                    logger.warning(f"Secondary LLM synthesize_brief attempt failed: {e}")
+
+            if llm_text and len(llm_text.strip()) > 40:
+                summary_part = llm_text.strip()
+                opener_part = None
+
+                # Extract conversation starter if provided
+                if "FIRST_CALL_OPENER:" in summary_part:
+                    parts = summary_part.split("FIRST_CALL_OPENER:", 1)
+                    summary_part = parts[0].strip()
+                    opener_part = parts[1].strip()
+                elif "First-Call Opener:" in summary_part:
+                    parts = summary_part.split("First-Call Opener:", 1)
+                    summary_part = parts[0].strip()
+                    opener_part = parts[1].strip()
+
+                # Clean up any leading headers like "## Executive Summary"
+                import re
+                summary_part = re.sub(r"^#{1,4}\s+.*?\n+", "", summary_part).strip()
+
+                # Clean up any raw markdown table rows if model still produced them
+                lines = summary_part.splitlines()
+                clean_lines = [l for l in lines if not l.strip().startswith("|") and not set(l.strip()) <= {"-", "|", ":"}]
+                summary_part = "\n".join(clean_lines).strip()
+
+                if customer.brief and summary_part:
+                    customer.brief.executive_summary = summary_part
+                    if opener_part and len(opener_part) > 15:
+                        clean_opener = opener_part.strip(' \n"\'“”')
+                        if "\n### Sources" in clean_opener:
+                            clean_opener = clean_opener.split("\n### Sources")[0].strip()
+                        elif "\nSources:" in clean_opener:
+                            clean_opener = clean_opener.split("\nSources:")[0].strip()
+                        customer.brief.conversation_starter = clean_opener
                     customer.brief.synthesized_at = now_iso
                     return customer.brief
         except Exception as e:

@@ -38,15 +38,19 @@ class LessonMetadata:
     summary: str
     context_files: List[str] = field(default_factory=list)
     knowledge_check: Optional[KnowledgeCheck] = None
+    knowledge_checks: List[KnowledgeCheck] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
+        primary_kc = self.knowledge_check or (self.knowledge_checks[0] if self.knowledge_checks else None)
+        active_kcs = self.knowledge_checks[:3] if len(self.knowledge_checks) > 3 else self.knowledge_checks
         return {
             "id": self.id,
             "lesson_index": self.lesson_index,
             "title": self.title,
             "summary": self.summary,
             "context_files": self.context_files,
-            "knowledge_check": self.knowledge_check.to_dict() if self.knowledge_check else None,
+            "knowledge_check": primary_kc.to_dict() if primary_kc else None,
+            "knowledge_checks": [kc.to_dict() for kc in active_kcs],
         }
 
 
@@ -197,47 +201,32 @@ class CourseLoader:
 
         raise FileNotFoundError(f"Context document '{file_name_or_path}' not found in course '{course_id}'.")
 
-    def _parse_knowledge_check_block(self, text: str) -> Optional[KnowledgeCheck]:
-        """
-        Parse a creator-defined Knowledge Check block from markdown text.
-        Extracts Question, Type, Options (with [x] marking correct choice), and Explanation.
-        Ensures options strictly terminate before any subsequent metadata key (e.g. **Explanation**).
-        """
-        if not text:
+    def _parse_single_question_chunk(self, chunk: str) -> Optional[KnowledgeCheck]:
+        """Parse an individual question and its options from a markdown chunk."""
+        q_match = re.search(r"-\s*\*\*Question(?:\s*\d+)?\*\*:\s*(.+)", chunk)
+        if not q_match:
+            q_match = re.search(r"\*\*Question(?:\s*\d+)?\*\*:\s*(.+)", chunk)
+        if not q_match:
             return None
 
-        # 1. Locate the Knowledge Check block
-        kc_block = ""
-        kc_match = re.search(r"(?:^|\n)(?:-\s*)?\*\*(?:Knowledge Check|Quiz)\*\*:\s*\n((?:[ \t].*\n?)+)", text)
-        if kc_match:
-            kc_block = kc_match.group(1)
-        else:
-            heading_match = re.search(r"(?:^|\n)##+\s*(?:Knowledge Check|Quiz)\s*\n([\s\S]*?)(?=\n##|\Z)", text)
-            if heading_match:
-                kc_block = heading_match.group(1)
-
-        if not kc_block:
-            return None
-
-        q_match = re.search(r"-\s*\*\*Question\*\*:\s*(.+)", kc_block)
-        type_match = re.search(r"-\s*\*\*Type\*\*:\s*(.+)", kc_block)
-        exp_match = re.search(r"-\s*\*\*Explanation\*\*:\s*(.+)", kc_block)
+        type_match = re.search(r"\*\*Type\*\*:\s*(.+)", chunk)
+        exp_match = re.search(r"\*\*Explanation\*\*:\s*(.+)", chunk)
 
         options: List[str] = []
         correct_idx = 0
 
-        opts_idx = kc_block.find("**Options**:")
+        opts_idx = chunk.find("**Options**:")
         if opts_idx != -1:
-            opts_sub = kc_block[opts_idx:].splitlines()[1:]
+            opts_sub = chunk[opts_idx:].splitlines()[1:]
             for opt_line in opts_sub:
                 s_line = opt_line.strip()
                 if not s_line:
                     continue
-                # Stop if encountering another bold metadata field like - **Explanation**:
-                if re.match(r"^-\s*\*\*[A-Za-z]+", s_line):
+                # Stop if encountering another bold metadata field like - **Explanation**: or next - **Question**:
+                if re.match(r"^-\s*\*\*(?:Explanation|Question|Type)[A-Za-z0-9_ ]*\*\*:", s_line):
                     break
-                if s_line.startswith("-"):
-                    item = s_line.lstrip("-").strip()
+                if s_line.startswith("-") or s_line.startswith("*"):
+                    item = s_line.lstrip("-*").strip()
                     if item.startswith("**"):
                         break
                     if item.startswith("[x]") or item.startswith("[X]"):
@@ -256,8 +245,58 @@ class CourseLoader:
                 correct_option_index=correct_idx,
                 explanation=exp_match.group(1).strip() if exp_match else "",
             )
-
         return None
+
+    def _parse_knowledge_check_blocks(self, text: str) -> List[KnowledgeCheck]:
+        """
+        Parse all creator-defined Knowledge Check questions from markdown text.
+        Supports:
+        - Multiple `- **Knowledge Check**:` blocks
+        - Single block with multiple `- **Question**:` or `- **Question 1**:` blocks
+        - Dedicated `## Knowledge Check` section
+        """
+        if not text:
+            return []
+
+        results: List[KnowledgeCheck] = []
+
+        # 1. Multiple "- **Knowledge Check**:" sections
+        kc_sections = re.split(r"(?:^|\n)(?:-\s*)?\*\*(?:Knowledge Check|Quiz)\*\*:\s*\n", text)
+        if len(kc_sections) > 1:
+            for sec in kc_sections[1:]:
+                q_splits = re.split(r"(?=(?:^|\n)\s*-\s*\*\*Question(?:\s*\d+)?\*\*:)", sec)
+                for q_chunk in q_splits:
+                    parsed = self._parse_single_question_chunk(q_chunk)
+                    if parsed and parsed.question not in [r.question for r in results]:
+                        results.append(parsed)
+            if results:
+                return results
+
+        # 2. Check for "## Knowledge Check" heading
+        heading_match = re.search(r"(?:^|\n)##+\s*(?:Knowledge Check|Quiz)\s*\n([\s\S]*?)(?=\n##|\Z)", text)
+        if heading_match:
+            body = heading_match.group(1)
+            q_splits = re.split(r"(?=(?:^|\n)\s*-\s*\*\*Question(?:\s*\d+)?\*\*:)", body)
+            for q_chunk in q_splits:
+                parsed = self._parse_single_question_chunk(q_chunk)
+                if parsed and parsed.question not in [r.question for r in results]:
+                    results.append(parsed)
+            if results:
+                return results
+
+        # 3. Fallback: search for any - **Question** blocks across the text
+        q_splits = re.split(r"(?=(?:^|\n)\s*-\s*\*\*Question(?:\s*\d+)?\*\*:)", text)
+        for q_chunk in q_splits:
+            parsed = self._parse_single_question_chunk(q_chunk)
+            if parsed and parsed.question not in [r.question for r in results]:
+                results.append(parsed)
+
+        return results
+
+    def _parse_knowledge_check_block(self, text: str) -> Optional[KnowledgeCheck]:
+        """Legacy helper returning the first parsed knowledge check."""
+        checks = self._parse_knowledge_check_blocks(text)
+        return checks[0] if checks else None
 
     def _parse_course_structure(self, file_path: Path, course_dir: Path) -> Optional[CourseDefinition]:
         text = file_path.read_text(encoding="utf-8", errors="replace")
@@ -343,10 +382,10 @@ class CourseLoader:
 
             # Knowledge check:
             # 1. Parse directly from course-structure.md lesson body
-            knowledge_check = self._parse_knowledge_check_block(body)
+            knowledge_checks = self._parse_knowledge_check_blocks(body)
 
             # 2. If not defined in course-structure.md, check for dedicated knowledge-check.md in lesson directory
-            if not knowledge_check and course_dir:
+            if not knowledge_checks and course_dir:
                 lesson_folder_candidates = [
                     course_dir / "lessons" / formatted_id / "knowledge-check.md",
                     course_dir / "lessons" / formatted_id / "quiz.md",
@@ -354,21 +393,23 @@ class CourseLoader:
                 for cand in lesson_folder_candidates:
                     if cand.is_file():
                         cand_text = cand.read_text(encoding="utf-8", errors="replace")
-                        knowledge_check = self._parse_knowledge_check_block(cand_text)
-                        if knowledge_check:
+                        knowledge_checks = self._parse_knowledge_check_blocks(cand_text)
+                        if knowledge_checks:
                             break
 
                 # 3. Check inside referenced context files for an embedded Knowledge Check
-                if not knowledge_check:
+                if not knowledge_checks:
                     for cf in context_files:
                         cf_clean = cf.strip().lstrip("/\\")
                         cf_path = (course_dir / cf_clean).resolve()
                         if cf_path.is_file() and cf_path.is_relative_to(course_dir):
                             cf_text = cf_path.read_text(encoding="utf-8", errors="replace")
                             if "**Knowledge Check**" in cf_text or "## Knowledge Check" in cf_text:
-                                knowledge_check = self._parse_knowledge_check_block(cf_text)
-                                if knowledge_check:
+                                knowledge_checks = self._parse_knowledge_check_blocks(cf_text)
+                                if knowledge_checks:
                                     break
+
+            primary_kc = knowledge_checks[0] if knowledge_checks else None
 
             lessons.append(
                 LessonMetadata(
@@ -377,7 +418,8 @@ class CourseLoader:
                     title=lesson_title,
                     summary=summary,
                     context_files=context_files,
-                    knowledge_check=knowledge_check,
+                    knowledge_check=primary_kc,
+                    knowledge_checks=knowledge_checks,
                 )
             )
             lesson_idx += 1

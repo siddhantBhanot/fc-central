@@ -20,6 +20,7 @@ class LessonSummarySchema(BaseModel):
     context_files: List[str] = Field(default_factory=list)
     status: Optional[str] = "upcoming"  # upcoming, current, completed
     knowledge_check: Optional[KnowledgeCheckSchema] = None
+    knowledge_checks: Optional[List[KnowledgeCheckSchema]] = Field(default_factory=list)
 
 
 class CourseEnrollmentSummary(BaseModel):
@@ -76,6 +77,7 @@ class LessonDetailResponse(BaseModel):
     takeaways: List[str] = Field(default_factory=list)
     sources: List[SourceCitationSchema] = Field(default_factory=list)
     knowledge_check: Optional[KnowledgeCheckSchema] = None
+    knowledge_checks: Optional[List[KnowledgeCheckSchema]] = Field(default_factory=list)
     doubts: List[Dict[str, Any]] = Field(default_factory=list)
     is_completed: bool = False
     model: str = "default"
@@ -105,14 +107,20 @@ class DoubtResponse(BaseModel):
 
 
 class KnowledgeCheckSubmitRequest(BaseModel):
-    selected_option_index: int = Field(..., ge=0)
+    selected_option_index: Optional[int] = Field(default=None, ge=0)
+    question_index: Optional[int] = Field(default=0, ge=0)
+    answers: Optional[List[int]] = None
 
 
 class KnowledgeCheckSubmitResponse(BaseModel):
     lesson_id: str
     is_correct: bool
-    correct_option_index: int
-    explanation: str
+    correct_option_index: Optional[int] = None
+    explanation: Optional[str] = None
+    question_index: Optional[int] = 0
+    results: Optional[List[Dict[str, Any]]] = None
+    score: Optional[int] = None
+    total: Optional[int] = None
 
 
 class EnrollResponse(BaseModel):

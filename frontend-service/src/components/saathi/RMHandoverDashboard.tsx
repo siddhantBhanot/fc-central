@@ -15,6 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { CustomerRelationship } from '@/types';
+import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { AskSaathiDrawer } from './AskSaathiDrawer';
 import { RelationshipTimelineView } from './RelationshipTimelineView';
 
@@ -167,9 +168,9 @@ export const RMHandoverDashboard: React.FC<RMHandoverDashboardProps> = ({
                     <p className="text-slate-800 font-semibold leading-relaxed">
                       {customer.brief.client_sentiment}
                     </p>
-                    <p className="text-slate-600 leading-relaxed">
-                      {customer.brief.executive_summary}
-                    </p>
+                    <div className="text-slate-600 leading-relaxed text-xs [&>div>p]:mb-1.5 [&>div>p:last-child]:mb-0">
+                      <MarkdownRenderer content={customer.brief.executive_summary} />
+                    </div>
                   </div>
 
                   {/* Manually Added Relationship Context (Vectorized in Qdrant) */}

@@ -120,6 +120,7 @@ export function KnowledgeCafeView({
               takeaways: meta.takeaways || [],
               sources: meta.sources || [],
               knowledge_check: meta.knowledge_check,
+              knowledge_checks: meta.knowledge_checks || (meta.knowledge_check ? [meta.knowledge_check] : []),
               doubts: meta.doubts || [],
               is_completed: meta.is_completed,
               model: meta.model,
@@ -282,14 +283,20 @@ export function KnowledgeCafeView({
 
 
   // Handle Knowledge Check Submission
-  const handleSubmitCheck = async (selectedOptionIndex: number) => {
+  const handleSubmitCheck = async (
+    selectedOptionIndex?: number,
+    questionIndex: number = 0,
+    answers?: number[]
+  ) => {
     if (!activeCourseId || !activeLessonId) {
       throw new Error('No active lesson');
     }
     return apiClient.submitKnowledgeCheck(
       activeCourseId,
       activeLessonId,
-      selectedOptionIndex
+      selectedOptionIndex,
+      questionIndex,
+      answers
     );
   };
 

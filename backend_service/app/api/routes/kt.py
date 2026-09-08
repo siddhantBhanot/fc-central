@@ -211,8 +211,10 @@ async def submit_knowledge_check(
     res = await kt_service.submit_knowledge_check(
         course_id=course_id,
         lesson_id=lesson_id,
-        selected_option_index=payload.selected_option_index,
         user_id=current_user.id,
+        selected_option_index=payload.selected_option_index,
+        question_index=payload.question_index or 0,
+        answers=payload.answers,
     )
     return KnowledgeCheckSubmitResponse(**res)
 
